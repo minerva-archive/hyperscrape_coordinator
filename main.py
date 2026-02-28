@@ -1,10 +1,12 @@
+from uuid import uuid4
+from files import HyperscrapeFile
 import state
 from flask import Flask, request
 
 from helpers import get_request_ip, get_worker
 
 
-app = Flask()
+app = Flask(__name__)
 
 @app.route("/")
 def root():
@@ -15,20 +17,21 @@ def register_worker():
     ip = get_request_ip()
     if (ip in state.banned_ips):
         return {"error": "Could not connect to worker"}, 403
-    for worker_id in state.workers:
+    for worker_id in list(state.workers.keys()):
         if (state.workers[worker_id].ip == ip):
             state.remove_worker(worker_id)
-    data = request.json()
+    data = request.json
     if (data == None or
         (not "version" in data) or
         (not "max_upload" in data) or 
         (not "max_download" in data) or
+        (not "max_per_file_speed" in data) or
         (not "threads" in data)):
         return {"error": "Invalid Request"}, 400
     if (data["version"] > state.config['general']['version']):
         return {"error": f"Version mismatch, expected {state.config['general']['version']}"}, 400
     return {
-        "token": state.add_worker(ip, data["max_upload"], data["max_download"], data["threads"])
+        "token": state.add_worker(ip, data["max_upload"], data["max_download"], data["max_per_file_speed"], data["threads"])
     }
 
 @app.route("/chunks", methods=['GET'])
@@ -76,6 +79,7 @@ def get_chunks():
         file = state.files[state.chunk_to_file[chunk_id]]
         if (file.receiver == None): # If no receiver is set for this file, we pick one
             file.receiver = ideal_receiver
+        state.assigned_chunks.assign_chunk(worker.worker_id, chunk_id)
         response[chunk_id] = {
             "url": file.url,
             "range": [
@@ -91,7 +95,26 @@ def put_status():
     worker = get_worker()
     if (not worker):
         return {"error": "Invalid token!"}, 403
-    data = request.json()
+    data = request.json
     for chunk_id in data:
         state.chunks[chunk_id].worker_status[worker.worker_id].downloaded = data[chunk_id]["dowloaded"]
         state.chunks[chunk_id].worker_status[worker.worker_id].uploaded = data[chunk_id]["uploaded"]
+
+state.files = {}
+state.chunks = {}
+state.chunk_to_file = {}
+state.sorted_downloadable_files = []
+state.file_worker_counts = {}
+state.add_file(HyperscrapeFile(
+    str(uuid4()),
+    "./test/test.txt",
+    156437,
+    "https://myrient.erista.me/files/No-Intro/ACT%20-%20Apricot%20PC%20Xi/%5BBIOS%5D%20MS-DOS%202.11%20%28Europe%29%20%28v3.1%29%20%28Disk%201%29%20%28OS%29.zip",
+    1024*25
+))
+
+
+if __name__ == "__main__":
+    from waitress import serve
+    print(f'Listening on {state.config["server"]["port"]}')
+    serve(app, host="0.0.0.0", port=state.config["server"]["port"], threads=state.config["server"]["threads"])

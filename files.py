@@ -1,22 +1,5 @@
 from uuid import uuid4
 
-from receivers import Receiver
-
-class AssignedChunks():
-    def __init__(self):
-        self._assigned_chunks: dict[str, str] = {}
-        self._chunk_workers: dict[str, list[str]] = {} # Reverse mapping
-    
-    def assign_chunk(self, worker_id, chunk_id):
-        self._assigned_chunks[worker_id] = chunk_id
-        if (not chunk_id in self._chunk_workers):
-            self._chunk_workers = []
-        self._chunk_workers[chunk_id].append(worker_id)
-
-    def remove_worker(self, worker_id):
-        self._chunk_workers[self._assigned_chunks[worker_id]].remove(worker_id)
-        self._assigned_chunks[worker_id]
-
 class WorkerStatus():
     def __init__(self, downloaded: int, uploaded: int):
         self.downloaded = downloaded

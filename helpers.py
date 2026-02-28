@@ -10,7 +10,7 @@ def get_worker() -> Worker|None:
     """!
     @brief Returns a worker for this request or None if not applicable
     """
-    auth_header = request.header.get("authorization")
+    auth_header = request.headers.get("authorization")
     token = auth_header.split(" ")[-1]
     if (not token in state.workers):
         return None
