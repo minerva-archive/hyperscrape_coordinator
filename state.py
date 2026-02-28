@@ -1,6 +1,7 @@
 ###
 # State vars
 ###
+import os
 from uuid import uuid4
 from auth_token import AuthToken
 from console import Console
@@ -94,6 +95,8 @@ global config
 config = None
 with open("./config.toml", 'rb') as file:
     config = tomllib.load(file)
+os.makedirs(config["paths"]["chunk_temp_path"], exist_ok=True)
+os.makedirs(config["paths"]["storage_path"], exist_ok=True)
 
 ###
 # State helpers
@@ -108,7 +111,7 @@ def add_file(file: HyperscrapeFile):
         start = current_size
         end = min(current_size + file.chunk_size, file.total_size)
         chunk_id = str(uuid4())
-        chunks[chunk_id] = HyperscrapeChunk(start, end)
+        chunks[chunk_id] = HyperscrapeChunk(chunk_id, start, end)
         chunk_to_file[chunk_id] = file.file_id
         file.chunks.append(chunk_id)
         current_size = end
@@ -143,6 +146,8 @@ def add_worker(ip: str, max_upload: int, max_download: int, max_per_file_speed: 
 # File helper
 def check_file_complete(file_id: str):
     for chunk_id in files[file_id].chunks:
+        if (len(chunks[chunk_id].worker_status) == 0):
+            return False
         for worker_id in chunks[chunk_id].worker_status:
             if (not chunks[chunk_id].worker_status[worker_id].complete):
                 return False

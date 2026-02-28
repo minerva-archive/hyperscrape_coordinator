@@ -7,8 +7,9 @@ version = 1 # The coordinator version
 
 last_seen_timeout = 60 # How many seconds without getting a ping before we assume this worker died
 
-trust_count = 3 # How many workers need to download the same chunk before we trust that it is accurate
+# @TODO: DEBUGGING ONLY SET THIS TO 3 OR MORE
+trust_count = 1 # How many workers need to download the same chunk before we trust that it is accurate
 
 [paths]
-chunk_temp_path = "/staging/temp"
-storage_path = "/stating"
+chunk_temp_path = "./staging/temp"
+storage_path = "./staging"

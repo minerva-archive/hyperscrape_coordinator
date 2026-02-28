@@ -21,14 +21,15 @@ class WorkerStatus():
 # It's also more efficient
 ###
 class HyperscrapeChunk():
-    def __init__(self, start: int, end: int):
+    def __init__(self, chunk_id: str, start: int, end: int):
+        self.chunk_id = chunk_id
         self.start = start
         self.end = end
         self.worker_status: dict[str, WorkerStatus] = {}
 
     def cleanup_workers(self, timeout=30):
         for worker_id in list(self.worker_status.keys()):
-            if (time.time() - self.worker_status[worker_id].last_updated > timeout):
+            if ((not self.worker_status[worker_id].complete) and time.time() - self.worker_status[worker_id].last_updated > timeout):
                 del self.worker_status[worker_id]
 
 class HyperscrapeFile():

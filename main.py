@@ -56,15 +56,26 @@ def get_chunks():
     while len(chunks_to_download) < chunks_to_get and file_download_candidate_offset < len(state.sorted_downloadable_files):
         files_to_download_candidates = state.sorted_downloadable_files[file_download_candidate_offset:file_download_candidate_offset+chunks_to_get]
         for file_id in files_to_download_candidates:
+            downloading_file_already = False
+            # Ensure the worker isn't currently downloading this file
             for chunk_id in state.files[file_id].chunks:
                 state.chunks[chunk_id].cleanup_workers() # Cleanup workers that have not uploaded in a while
+                if (worker.worker_id in state.chunks[chunk_id].worker_status and not state.chunks[chunk_id].worker_status[worker.worker_id].complete):
+                    downloading_file_already = True # If worker is CURRENTLY downloading this FILE then we skip the entire file
+                    break
+            
+            if (downloading_file_already):
+                continue
+
+            for chunk_id in state.files[file_id].chunks:
                 # Get the chunk in this file with the lowest number of downloaders under trust_count
                 if (len(state.chunks[chunk_id].worker_status) >= state.config["general"]["trust_count"]):
                     continue
-                if (worker.worker_id in state.chunks[chunk_id].worker_status and not state.chunks[chunk_id].worker_status[worker.worker_id].complete):
-                    break # If worker is CURRENTLY downloading a chunk in this file we don't use this file at all! - Otherwise Myriant will reduce speeds for BOTH chunks
+                if (worker.worker_id in state.chunks[chunk_id].worker_status):
+                    continue # If worker has already downloaded THIS chunk then we skip it from candidates
                 chunks_to_download.append(chunk_id)
                 break # Only one chunk per file!
+        file_download_candidate_offset += chunks_to_get
 
     ###
     # We now have a list of chunks to download
@@ -93,8 +104,9 @@ def put_status():
     data = request.json
     for chunk_id in data:
         chunk = state.chunks[chunk_id]
-        chunk.worker_status[worker.worker_id].downloaded = data[chunk_id]["dowloaded"]
-        chunk.worker_status[worker.worker_id].mark_updated()
+        worker_status = chunk.worker_status[worker.worker_id]
+        worker_status.downloaded = data[chunk_id]["dowloaded"]
+        worker_status.mark_updated()
 
 
 @app.route("/upload", methods=["PUT"])
@@ -112,22 +124,23 @@ def upload_file():
         if (not worker.worker_id in state.chunks[chunk_id].worker_status):
             return {"error": "Chunk not requested"}, 400
         chunk = state.chunks[chunk_id]
-        if (chunk.complete >= state.config["general"]["trust_count"]):
-            return {"error": "Chunk already complete!"}, 409
+        worker_status = state.chunks[chunk_id].worker_status[worker.worker_id]
         # Handle chunk uploading
-        chunk_file = state.files[state.chunk_to_file[chunk_id]]
-        storage_path = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{worker_id}.bin")
+        chunk_file_object = state.files[state.chunk_to_file[chunk_id]]
+        temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.file_path)
+        os.makedirs(temp_storage_folder, exist_ok=True)
+        storage_path = os.path.join(temp_storage_folder, f"chunk_{chunk.chunk_id}_{worker.worker_id}.bin")
         with open(storage_path, "wb") as file:
             chunk_hash = hashlib.md5()
-            chunk.worker_status[worker.worker_id].uploaded = 0
+            worker_status.uploaded = 0
             stream_data = request.stream.read()
             while (len(stream_data) > 0):
-                chunk.worker_status[worker.worker_id].uploaded += len(stream_data)
-                chunk.worker_status[worker.worker_id].mark_updated()
+                worker_status.uploaded += len(stream_data)
+                worker_status.mark_updated()
                 file.write(stream_data)
                 chunk_hash.update(stream_data)
                 stream_data = request.stream.read()
-        chunk.worker_status[worker.worker_id].mark_complete(chunk_hash.hexdigest()) # This chunk is now complete
+        worker_status.mark_complete(chunk_hash.hexdigest()) # This chunk is now complete
 
         # Check that this hash matches the others that are complete
         chunk_hashes = {}
@@ -152,60 +165,62 @@ def upload_file():
                 if (worker_status.hash != most_popular_hash):
                     # Delete mismatched workers from chunk stuff
                     state.assigned_chunks.remove_worker(worker_id)
-                    os.remove(os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{worker_id}.bin")) # Remove the chunk this worker downloaded
-            return {"ok": "ok"}, 200 # We've processed the upload from the client, don't come back regardless of what happened
+                    os.remove(os.path.join(temp_storage_folder, f"chunk_{chunk.chunk_id}_{worker_id}.bin")) # Remove the chunk this worker downloaded
+            return {"result": "Upload had a mismatched hash, you can ignore this"}, 200 # We've processed the upload from the client, don't come back regardless of what happened
         
         # If the hashes weren't mismatched...
         if (len(chunk.worker_status) < state.config["general"]["trust_count"]): # Check that we have all the chunks responses we need
-            return {"ok", "ok"}, 200
+            return {"ok": "Upload looks good so far"}, 200
         for worker_id in chunk.worker_status: # Check that they're all complete
             worker_status = chunk.worker_status[worker_id]
             if (not worker_status.complete):
-                return {"ok", "ok"}, 200 # If any of the workers aren't complete we just skip this
+                return {"ok": "Upload looks good so far"}, 200 # If any of the workers aren't complete we just skip this
         
         # So all the hashes are good
         # AND we have responses that are complete for every response for this chunk?
-        # We can merge the chunks
+        # We can remove the other chunks and just keep ours
         worker_ids = list(chunk.worker_status)
         for worker_id in worker_ids[1:]: # Delete all but 1
-            os.remove(os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{worker_id}.bin"))
-        os.rename(os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{worker_ids[0]}.bin"), os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{chunk.start}.bin"))
+            os.remove(temp_storage_folder, f"chunk_{chunk.chunk_id}_{worker_id}.bin")
+        os.rename(os.path.join(temp_storage_folder, f"chunk_{chunk.chunk_id}_{worker_ids[0]}.bin"), os.path.join(temp_storage_folder, f"chunk_{chunk.start}.bin"))
 
         # Check if the whole file is complete
-        if (not state.check_file_complete(chunk_file.file_id)):
-            return {"ok": "ok"}, 200 # We're not yet done with the whole file despite being doen with this chunk!
+        if (not state.check_file_complete(chunk_file_object.file_id)):
+            return {"ok": "This chunk is validated"}, 200 # We're not yet done with the whole file despite being done with this chunk!
         # If we are done though, then we should construct and move the entire file
         chunk_files = []
-        for chunk_id in chunk_file.chunks:
+        for chunk_id in chunk_file_object.chunks:
             chunk = state.chunks[chunk_id]
-            chunk_files.append(os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file.file_path, f"chunk_{chunk.start}.bin"))
+            chunk_files.append(os.path.join(temp_storage_folder, f"chunk_{chunk.start}.bin"))
         chunk_files.sort() # Should sort in ascending order
 
         # Now we construct the final file!
         md5_hash = hashlib.md5()
         sha1_hash = hashlib.sha1()
         sha256_hash = hashlib.sha256()
-        with open(os.path.join(state.config["paths"]["storage_path"], chunk_file.file_path), 'wb') as main_file:
+        destination_path = os.path.join(state.config["paths"]["storage_path"], chunk_file_object.file_path)
+        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+        with open(destination_path, 'wb') as main_file:
             for chunk_file_path in chunk_files:
-                with open(chunk_file_path, 'rb') as chunk_file:
+                with open(chunk_file_path, 'rb') as chunk_file_stream:
                     read_size = 1024**2 * 10
-                    data = chunk_file.read(read_size) # Read 10MB at a time
+                    data = chunk_file_stream.read(read_size) # Read 10MB at a time
                     while (len(data) > 0):
                         main_file.write(data)
                         md5_hash.update(data)
                         sha1_hash.update(data)
                         sha256_hash.update(data)
-                        data = chunk_file.read(read_size)
+                        data = chunk_file_stream.read(read_size)
                 os.remove(chunk_file_path)
         # write hashes to file
-        state.file_hashes[chunk_file.file_path] = {
+        state.file_hashes[chunk_file_object.file_path] = {
             "md5": md5_hash.hexdigest(),
             "sha1": sha1_hash.hexdigest(),
             "sha256": sha256_hash.hexdigest()
         }
         state.save_file_hashes()
         
-        return {"ok": "ok"}, 200
+        return {"ok": "Upload entire file complete!"}, 200
 
 ###
 # FOR DEBUGGING ONLY!!!!
