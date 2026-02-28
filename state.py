@@ -81,7 +81,8 @@ class AssignedChunks():
         # Fix file ordering
         file_id = chunk_to_file[chunk_id]
         file_worker_counts[file_id] -= 1
-        reorder_file_workers(file_id)
+        if (file_id in sorted_downloadable_files):
+            reorder_file_workers(file_id)
         self._assigned_chunks[worker_id].remove(chunk_id)
 
     def remove_worker(self, worker_id):

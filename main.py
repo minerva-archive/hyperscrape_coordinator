@@ -115,7 +115,7 @@ def upload_file():
     if (not worker):
         return {"error": "Invalid token!"}, 403
     chunk_id = request.args.get("chunk_id", None)
-    file_id = request.args.get("file_id", None)
+    file_id = request.args.get("file_id", None) # @TODO
 
     if (chunk_id != None):
         # Ensure the chunk exists
@@ -219,11 +219,13 @@ def upload_file():
             "sha256": sha256_hash.hexdigest()
         }
         state.save_file_hashes()
+        state.sorted_downloadable_files.remove(chunk_file_object.file_id) # We don't want to download this again
         
         return {"ok": "Upload entire file complete!"}, 200
 
 ###
 # FOR DEBUGGING ONLY!!!!
+# @TODO @FIXMe
 ###
 state.files = {}
 state.chunks = {}
@@ -235,7 +237,7 @@ state.add_file(HyperscrapeFile(
     "./test/test.txt",
     156437,
     "https://myrient.erista.me/files/No-Intro/ACT%20-%20Apricot%20PC%20Xi/%5BBIOS%5D%20MS-DOS%202.11%20%28Europe%29%20%28v3.1%29%20%28Disk%201%29%20%28OS%29.zip",
-    1024*25
+    (1024*1024)*2
 ))
 
 if __name__ == "__main__":
