@@ -86,27 +86,28 @@ Registers a reciever with the coordinator
 }
 ```
 
-## GET `/file_info?job=JOB_ID`
-Gets a file info from a job id
+## GET `/get_jobs`
+Get all jobs
 
 ### Request Headers
 - `authorization` - Set to `Bearer TOKEN` where `TOKEN` is the recieved response from `/register`
 
-### Request
-- `JOB_ID` - The ID of the job to get file info for
-
 ### Response
 ```json
 {
-    "file_path": "/No-Intro/wjhatever",
-    "total_size": 34323
+    "9b38d89a-f7b5-4676-af33-d2c54f16fa50": {
+        "file_path": "/No-Intro/wjhatever",
+        "total_size": 34323,
+        "url": "https://myrient.erista.me/files/No-Intro/Ouya%20-%20Ouya/iMech%20Online%20%28World%29%20%28v1.2.05%29.zip",
+        "range": [0, 242422]
+    }
 }
 ```
-- `file_path` the path for the file to be uploaded
-- `total_size` the total file size
+- Returns a map of job IDs to their info
+- NOTE: Only returns jobs assigned to this reciever
 
 ## GET `/worker_info?token=TOKEN`
-Gets a file info from a job id
+Get a worker info from a token
 
 ### Request Headers
 - `authorization` - Set to `Bearer TOKEN` where `TOKEN` is the recieved response from `/register_worker`
