@@ -288,3 +288,6 @@ def upload_file():
         state.sorted_downloadable_files.remove(chunk_file_object.file_id) # We don't want to download this again
         
         return {"ok": "Upload entire file complete!"}, 200
+
+state.console.print(f'Listening on {state.config["server"]["port"]}')
+state.console.start()
