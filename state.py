@@ -43,15 +43,15 @@ file_hashes: dict[str, dict[str, str]] = {}
 # State Files
 def save_file_state():
     with open("./file_state.bin", 'wb') as file:
-        pickle.dump(files, file)
+        pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_chunk_state():
     with open("./chunk_state.bin", 'wb') as file:
-        pickle.dump(chunks, file)
+        pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_file_hashes():
     with open("./file_hashes.bin", 'wb') as file:
-        pickle.dump(file_hashes, file)
+        pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_data_files():
     save_chunk_state()
@@ -128,6 +128,7 @@ def cleanup_chunk_workers(chunk_id):
             del chunk.worker_status[worker_id]
 
 
+print("Loading current state...")
 try:
     with open("./file_state.bin", 'rb') as file:
         files = pickle.load(file)
