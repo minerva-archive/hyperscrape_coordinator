@@ -1,6 +1,8 @@
 import os
+from threading import Thread
 from uuid import uuid4
 from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
+from gc_thread import gc
 import state
 from flask import Flask, request
 import hashlib
@@ -289,5 +291,7 @@ def upload_file():
         
         return {"ok": "Upload entire file complete!"}, 200
 
+gc_thread = Thread(target=gc)
+gc_thread.start()
 state.console.print(f'Listening on {state.config["server"]["port"]}')
 state.console.start()
