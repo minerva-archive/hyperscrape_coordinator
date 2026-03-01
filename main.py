@@ -177,14 +177,20 @@ def upload_file():
         with open(storage_path + ".partial", "wb") as file:
             chunk_hash = hashlib.md5()
             worker_status.uploaded = 0
-            stream_data = request.stream.read()
-            while (len(stream_data) > 0):
-                worker_status.uploaded += len(stream_data)
-                worker_status.mark_updated()
-                worker.update_last_seen()
-                file.write(stream_data)
-                chunk_hash.update(stream_data)
+            try:
                 stream_data = request.stream.read()
+                while (len(stream_data) > 0):
+                    worker_status.uploaded += len(stream_data)
+                    worker_status.mark_updated()
+                    worker.update_last_seen()
+                    file.write(stream_data)
+                    chunk_hash.update(stream_data)
+                    stream_data = request.stream.read()
+            except:
+                if (os.path.exists(storage_path + ".partial")):
+                    os.remove(storage_path + ".partial")
+                    del chunk.worker_status[worker.worker_id]
+                    return {"error": "Error processing chunk"}, 500
         if (os.path.exists(storage_path + ".partial") and os.stat(storage_path + ".partial").st_size == worker_status.downloaded):
             worker_status.mark_complete(chunk_hash.hexdigest()) # This chunk is now complete
             os.rename(storage_path + ".partial", storage_path)
