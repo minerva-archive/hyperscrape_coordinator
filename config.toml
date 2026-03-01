@@ -1,6 +1,8 @@
 [server]
 port = 8081
 threads = 4096
+max_connections = 16384
+backlog = 8192
 
 [general]
 version = 1 # The coordinator version
