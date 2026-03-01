@@ -2,6 +2,7 @@
 # State vars
 ###
 import os
+from threading import Lock
 import time
 from uuid import uuid4
 from auth_token import AuthToken
@@ -39,34 +40,26 @@ file_worker_counts: dict[str, int] = {} # Count how many workers are using each 
 sorted_downloadable_files: list[str] = [] # List of files to be downloaded sorted by how many workers are using it
 file_hashes: dict[str, dict[str, str]] = {}
 
+global workers_lock
+global files_lock
+global chunks_lock
+workers_lock = Lock()
+files_lock = Lock()
+chunks_lock = Lock()
+
 ###
 # State Files
 def save_file_state():
     with open("./file_state.bin", 'wb') as file:
-        while True:
-            try:
-                pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
-                break
-            except:
-                pass
+        pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_chunk_state():
     with open("./chunk_state.bin", 'wb') as file:
-        while True:
-            try:
-                pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
-                break
-            except:
-                pass
+        pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_file_hashes():
     with open("./file_hashes.bin", 'wb') as file:
-        while True:
-            try:
-                pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
-                break
-            except:
-                pass
+        pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_data_files():
     save_chunk_state()
