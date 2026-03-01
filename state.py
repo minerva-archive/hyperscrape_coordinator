@@ -43,15 +43,30 @@ file_hashes: dict[str, dict[str, str]] = {}
 # State Files
 def save_file_state():
     with open("./file_state.bin", 'wb') as file:
-        pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
+        while True:
+            try:
+                pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
+                break
+            except:
+                pass
 
 def save_chunk_state():
     with open("./chunk_state.bin", 'wb') as file:
-        pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
+        while True:
+            try:
+                pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
+                break
+            except:
+                pass
 
 def save_file_hashes():
     with open("./file_hashes.bin", 'wb') as file:
-        pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
+        while True:
+            try:
+                pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
+                break
+            except:
+                pass
 
 def save_data_files():
     save_chunk_state()
