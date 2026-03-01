@@ -5,7 +5,7 @@ max_connections = 16384
 backlog = 8192
 
 [general]
-version = 1 # The coordinator version
+version = 2 # The coordinator version
 
 worker_timeout = 10
 

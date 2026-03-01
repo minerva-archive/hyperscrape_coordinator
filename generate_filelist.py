@@ -6,8 +6,8 @@ from tqdm import tqdm
 import argparse
 
 parser = argparse.ArgumentParser(
-                    prog='Hashbrown',
-                    description='Hashbrown is a multithreaded high-speed filetree hasher',
+                    prog='Filelist Generator',
+                    description='Generates a filelist for Hyperscrape\'s coordinator',
                     epilog='Created by Hackerdude for Minerva')
 parser.add_argument("myrient_index", help="Path to the index to generate file objects for", type=argparse.FileType('r'))
 parser.add_argument("--ignore_file_list", help="Path to a list of files to ignore (in find command output format)", type=argparse.FileType('r'), action='append')

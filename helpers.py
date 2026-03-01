@@ -28,9 +28,9 @@ def get_worker() -> Worker|None:
     if (token == None or not token.id in state.workers):
         return None
     worker = state.workers[token.id]
-    if (get_request_ip() != None and worker.ip != get_request_ip()):
+    if (get_request_ip() != None and worker.get_ip() != get_request_ip()):
         return None
-    if (worker.auth_nonce != token.nonce):
+    if (worker.get_auth_nonce() != token.nonce):
         return None
     return worker
 

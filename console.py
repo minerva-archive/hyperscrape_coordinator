@@ -47,34 +47,33 @@ class Console():
 
     def list_downloadable(self, argv):
         print("Downloadable Files:")
-        self.dynamic_list(state.sorted_downloadable_files, displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].file_path})")
+        self.dynamic_list(state.sorted_downloadable_files, displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].get_path()})")
 
     def list_workers(self, argv):
         print("Workers:")
-        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].ip} (last seen {round(time.time() - state.workers[worker_id].last_seen, 2)}s ago)")
+        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (last seen {round(time.time() - state.workers[worker_id].get_last_seen(), 2)}s ago)")
 
     def list_files(self, argv):
         print("Files (path, complete):")
-        self.dynamic_list(list(state.files.keys()), displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].file_path} ({state.files[file_id].complete})")
+        self.dynamic_list(list(state.files.keys()), displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})")
     
     def get_file(self, argv):
         file_id = argv[1]
         file = state.files[file_id]
-        print(f"File: {file.file_id}")
-        print(f"Path: {file.file_path}")
-        print(f"Size: {file.total_size}")
-        print(f"URL: {file.url}")
+        print(f"File: {file.get_id()}")
+        print(f"Path: {file.get_path()}")
+        print(f"Size: {file.get_total_size()}")
+        print(f"URL: {file.get_url()}")
         print(f"Chunks for {file_id}:")
-        chunks = file.chunks
-        self.dynamic_list(chunks, displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({len(state.chunks[chunk_id].worker_status)})")
+        self.dynamic_list(file.get_chunks(), displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})")
 
     def get_chunk(self, argv):
         chunk = state.chunks[argv[1]]
         print(f"Chunk: {argv[1]}")
-        print(f"Range: [{chunk.start}, {chunk.end}]")
+        print(f"Range: [{chunk.get_start()}, {chunk.get_end()}]")
         print("Workers:")
-        for worker_id in chunk.worker_status:
-            print(f"- {worker_id} D: {chunk.worker_status[worker_id].downloaded}\tU: {chunk.worker_status[worker_id].uploaded}\tH: {chunk.worker_status[worker_id].hash}\tC: {chunk.worker_status[worker_id].complete}\tLU: {round(time.time() - chunk.worker_status[worker_id].last_updated, 2)}s ago")
+        for worker_id in chunk.get_workers():
+            print(f"- {worker_id} D: {chunk.get_worker_status(worker_id).downloaded}\tU: {chunk.get_worker_status(worker_id).uploaded}\tH: {chunk.get_worker_status(worker_id).hash}\tC: {chunk.get_worker_status(worker_id).complete}\tLU: {round(time.time() - chunk.get_worker_status(worker_id).last_updated, 2)}s ago")
 
     def dynamic_list(self, list: list[object], displayFunction: Callable[[int, object], str]):
         list_index = 0
