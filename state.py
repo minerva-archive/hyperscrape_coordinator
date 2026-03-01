@@ -127,7 +127,6 @@ def cleanup_chunk_workers(chunk_id):
         ):
             del chunk.worker_status[worker_id]
 
-
 print("Loading current state...")
 try:
     with open("./file_state.bin", 'rb') as file:
@@ -138,7 +137,6 @@ try:
         file_hashes = pickle.load(file)
     print("Generating files to download...")
     for file_id in files:
-        file = files[file_id]
         if (not files[file_id].complete):
             sorted_downloadable_files.append(file_id)
             file_worker_counts[file_id] = 0

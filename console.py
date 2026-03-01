@@ -56,7 +56,7 @@ class Console():
     def list_files(self, argv):
         print("Files (path, complete):")
         self.dynamic_list(list(state.files.keys()), displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].file_path} ({state.files[file_id].complete})")
-
+    
     def get_file(self, argv):
         file_id = argv[1]
         file = state.files[file_id]
@@ -101,5 +101,7 @@ class Console():
                 print("ERR: Command must be one of U, D, M, L or Q")
 
     def quit(self, argv):
-        self._should_run = False
+        print("Saving state...")
+        state.save_data_files()
+        print("Quitting!")
         os._exit(0)

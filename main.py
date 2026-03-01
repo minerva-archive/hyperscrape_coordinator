@@ -6,7 +6,7 @@ from flask import Flask, request
 import hashlib
 import shutil
 
-from helpers import get_auth_token, get_request_ip, get_url_size, get_worker
+from helpers import get_request_ip, get_url_size, get_worker
 
 print("=========================")
 print("=  HYPERSCRAPE SERVER   =")
@@ -167,6 +167,8 @@ def upload_file():
         worker_status = chunk.worker_status[worker.worker_id]
         # Handle chunk uploading
         chunk_file_object = state.files[file_id]
+        if (not chunk_id in chunk_file_object.chunks):
+            return {"error": "Unknown file"}, 400
         temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.file_path)
         os.makedirs(temp_storage_folder, exist_ok=True)
         storage_path = os.path.join(temp_storage_folder, f"chunk_{chunk.chunk_id}_{worker.worker_id}.bin")

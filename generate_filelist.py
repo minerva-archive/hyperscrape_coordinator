@@ -1,8 +1,7 @@
 import time
 from uuid import uuid4
 from files import HyperscrapeFile
-import state
-from msgspec import json
+import os
 from tqdm import tqdm
 import argparse
 
@@ -17,10 +16,11 @@ args = parser.parse_args()
 
 if (args.reset):
     print("Clearing files")
-    state.files = {}
-    state.chunks = {}
-    state.sorted_downloadable_files = []
-    state.file_worker_counts = {}
+    os.remove("./file_state.bin")
+    os.remove("./chunk_state.bin")
+    os.remove("./file_hashes.bin")
+
+import state
 
 # Parse the ignore lists
 print("Parsing ignore lists...")
@@ -39,10 +39,14 @@ for ignore_list in args.ignore_file_list:
 
 print("Parsing main list...")
 full_list = set()
+file_sizes = {}
 pbar = tqdm()
 for line in iter(args.myrient_index.readline, ''):
-    path = ''.join(('./', ' '.join(line.strip().split(' ')[1:])))
+    split = line.strip().split(' ')
+    path = ''.join(('./', ' '.join(split[1:])))
     full_list.add(path)
+    file_sizes[path] = split[0]
+    del split
     pbar.update(1)
 pbar.close()
 
@@ -52,11 +56,11 @@ for ignore_list in ignore_lists:
 
 print("Generating list of files")
 for file_path in tqdm(full_list):
-    file_id = uuid4()
+    file_id = str(uuid4())
     state.files[file_id] = HyperscrapeFile(
         file_id,
         file_path,
-        None,
+        int(file_sizes[file_path]),
         f"https://myrient.erista.me/files/{file_path[2:]}",
         (1024*1024)*50 # 50MB chunks
     )
