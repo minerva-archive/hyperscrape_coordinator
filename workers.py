@@ -7,11 +7,8 @@ class Worker():
         self._ip = ip
         self._auth_nonce = auth_nonce
         self._max_concurrent = max_concurrent
-        self._last_seen = time.time()
+        self._joined = time.time()
         self._lock = Lock()
-
-    def update_last_seen(self):
-        self._last_seen = time.time()
 
     def get_id(self):
         return self._worker_id
@@ -25,8 +22,8 @@ class Worker():
     def get_max_concurrent(self):
         return self._max_concurrent
     
-    def get_last_seen(self):
-        return self._last_seen
+    def get_joined(self):
+        return self._joined
     
     def get_lock(self):
         return self._lock

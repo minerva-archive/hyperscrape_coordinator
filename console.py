@@ -51,7 +51,7 @@ class Console():
 
     def list_workers(self, argv):
         print("Workers:")
-        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (last seen {round(time.time() - state.workers[worker_id].get_last_seen(), 2)}s ago)")
+        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)")
 
     def list_files(self, argv):
         print("Files (path, complete):")
