@@ -18,6 +18,7 @@ class Console():
             "get-file": [self.get_file, "List chunks for a file and other info (specify file id as second arg)"],
             "list-downloadable": [self.list_downloadable, "List downloadable files"],
             "get-chunk": [self.get_chunk, "Get chunk info (specify chunk id as second arg)"],
+            "reload-files": [self.reload_files, "Reload files (WARN: EXPERIMENTAL!)"],
             "save": [self.save, "Save current info"],
             "quit": [self.quit, "Shutdown the server"]
         }
@@ -45,6 +46,9 @@ class Console():
         print("REGISTERED COMMANDS:")
         for command in self._commands:
             print(f"{command}\t-\t{self._commands[command][1]}")
+
+    def reload_files(self, argv):
+        state.load_files()
 
     def list_downloadable(self, argv):
         print("Downloadable Files:")

@@ -216,30 +216,48 @@ def cleanup_chunk_workers(chunk_id: str):
             ):
                 chunk.remove_worker_status(worker_id)
 
-print("Loading current state...")
-try:
-    with open("./file_state.bin", 'rb') as file:
-        files = pickle.load(file)
-    with open("./chunk_state.bin", 'rb') as file:
-        chunks = pickle.load(file)
-    with open("./file_hashes.bin", 'rb') as file:
-        file_hashes = pickle.load(file)
-    print("Generating files to download...")
-    for file_id in files:
-        file = files[file_id]
-        total_bytes += file.get_total_size()
-        if (file.get_complete()):
-            completed_files += 1
-            downloaded_bytes += file.get_total_size()
-            completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
-        else:
-            sorted_downloadable_files.append(file_id)
-            file_worker_counts[file_id] = 0
-        del file
-    print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")
-    with open("./leaderboard.bin", 'rb') as file:
-        current_leaderboard = pickle.load(file)
-except Exception as e:
-    print("NOTE: Could not load previous file state:")
-    print(e)
-    save_data_files()
+def load_files():
+    global files_lock
+    global files
+    global file_hashes
+    global chunks_lock
+    global chunks
+    global current_leaderboard_lock
+    global current_leaderboard
+    global total_bytes
+    global completed_files
+    global downloaded_bytes
+    global completed_chunks
+    global sorted_downloadable_files
+    global file_worker_counts
+    print("Loading current state...")
+    try:
+        with files_lock:
+            with open("./file_state.bin", 'rb') as file:
+                files = pickle.load(file)
+            with open("./file_hashes.bin", 'rb') as file:
+                file_hashes = pickle.load(file)
+            with chunks_lock:
+                with open("./chunk_state.bin", 'rb') as file:
+                    chunks = pickle.load(file)
+            print("Generating files to download...")
+            for file_id in files:
+                file = files[file_id]
+                total_bytes += file.get_total_size()
+                if (file.get_complete()):
+                    completed_files += 1
+                    downloaded_bytes += file.get_total_size()
+                    completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
+                else:
+                    sorted_downloadable_files.append(file_id)
+                    file_worker_counts[file_id] = 0
+                del file
+        print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")
+        with current_leaderboard_lock:
+            with open("./leaderboard.bin", 'rb') as file:
+                current_leaderboard = pickle.load(file)
+    except Exception as e:
+        print("NOTE: Could not load previous file state:")
+        print(e)
+        save_data_files()
+load_files()
