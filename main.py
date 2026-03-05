@@ -53,27 +53,15 @@ def register_worker(ip: str, data: dict):
     discord_id = None
     discord_username = None
     avatar_url = None
-    if (data["discord_token"]):
-        API_ENDPOINT = 'https://discord.com/api/v10'
-        req_data = {
-            'grant_type': 'authorization_code',
-            'code': data["discord_token"],
-            'redirect_uri': state.secrets["discord"]["redirect_uri"]
-        }
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }
-        r = requests.post('%s/oauth2/token' % API_ENDPOINT, data=req_data, headers=headers, auth=(state.secrets["discord"]["client_id"], state.secrets["discord"]["client_secret"]))
+    if (data["access_token"]):
+        r = requests.get("https://discord.com/api/users/@me", headers={
+            "Authorization": f"Bearer {data['access_token']}"
+        })
         if (r.status_code == 200):
             res_data = r.json()
-            r = requests.get("https://discord.com/api/users/@me", headers={
-                "Authorization": f"Bearer {res_data['access_token']}"
-            })
-            if (r.status_code == 200):
-                res_data = r.json()
-                discord_id = res_data["id"]
-                discord_username = res_data["global_name"] # Use the display name
-                avatar_url = f"https://cdn.discordapp.com/avatars/{res_data['id']}/{res_data['avatar']}.png"
+            discord_id = res_data["id"]
+            discord_username = res_data["global_name"] # Use the display name
+            avatar_url = f"https://cdn.discordapp.com/avatars/{res_data['id']}/{res_data['avatar']}.png"
 
     
     worker_id = str(uuid4())
