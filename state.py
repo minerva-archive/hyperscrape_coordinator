@@ -190,13 +190,13 @@ def reorder_file_workers(file_id):
 def remove_worker(worker_id: str):
     with workers_lock:
         with workers[worker_id].get_lock():
-            del workers[worker_id] # Delete the worker
             for chunk_id in workers[worker_id].get_file_handles():
                 workers[worker_id].close_file_handle(chunk_id)
                 os.remove(workers[worker_id].get_file_path(chunk_id)) # Delete our partials
                 workers[worker_id].remove_chunk_hash(chunk_id)
                 chunks[chunk_id].remove_worker_status(workers[worker_id].get_id())
                 assigned_chunks -= 1
+            del workers[worker_id] # Delete the worker
 
 # IP banning
 def write_banned_ips():
