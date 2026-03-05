@@ -230,6 +230,7 @@ def load_files():
     global completed_chunks
     global sorted_downloadable_files
     global file_worker_counts
+    global assigned_chunks
     print("Loading current state...")
     try:
         with files_lock:
