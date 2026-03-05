@@ -10,7 +10,7 @@ import pickle
 ## }
 
 file_hashes = None
-with open("./file_hashes.bin", 'rb') as file:
+with open("./file_hashes.bin", "rb") as file:
     file_hashes = pickle.load(file)
 
 for file_path in file_hashes:
