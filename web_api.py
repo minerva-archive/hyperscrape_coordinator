@@ -2,7 +2,7 @@ from threading import Thread
 import time
 from flask import Flask, render_template, request
 import requests
-from waitress import serve
+from waitress.server import create_server
 import state
 
 web_api_app = Flask(__name__, template_folder="./static/")
@@ -71,13 +71,11 @@ def html_index():
     return render_template("index.html")
 
 def run_web_api():
+    server = create_server(web_api_app, host='0.0.0.0', port=state.config["server"]["http"]["port"], threads=state.config["server"]["http"]["threads"], backlog=state.config["server"]["http"]["backlog"])
     while True:
-        try:
-            serve(web_api_app, host='0.0.0.0', port=state.config["server"]["http"]["port"], threads=state.config["server"]["http"]["threads"], backlog=state.config["server"]["http"]["backlog"])
-        except Exception as e:
-            print("[WARN] Waitress crashed - restarting!")
-            print(e)
-            time.sleep(5)
+        server.run()
+        time.sleep(120)
+        server.close()
 
 def start_web_api():
     thread = Thread(target=run_web_api)
