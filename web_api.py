@@ -5,9 +5,6 @@ import requests
 from gevent.pywsgi import WSGIServer
 import state
 
-import gevent.monkey
-gevent.monkey.patch_all()
-
 web_api_app = Flask(__name__, template_folder="./static/")
 
 
