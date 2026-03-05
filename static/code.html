@@ -95,13 +95,13 @@
             <h1 id="error">{{ error }}</h1>
             {% else %}
             <h1 id="code">{{ code }}</h1>
-            {% endif %}
             <button id="button">Copy To Clipboard</button>
+            <script>
+                document.getElementById("button").addEventListener("click", (event) => {
+                    navigator.clipboard.writeText("{{code}}");
+                });
+            </script>
+            {% endif %}
         </div>
-        <script>
-            document.getElementById("button").addEventListener("click", (event) => {
-                navigator.clipboard.writeText("{{code}}");
-            });
-        </script>
     </body>
 </html>
