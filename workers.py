@@ -56,6 +56,8 @@ class Worker():
         del self._file_handles[chunk_id]
     
     def set_file_handle(self, chunk_id: str, file_handle: FileIO):
+        if (chunk_id in self._file_handles):
+            self.close_file_handle(chunk_id)
         self._file_handles[chunk_id] = file_handle
 
     def check_file_handle(self, chunk_id: str):
