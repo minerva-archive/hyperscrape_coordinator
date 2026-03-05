@@ -91,11 +91,11 @@
         <div>
             <h2 id="title">Minerva Hyperscrape Authentication</h2>
             <h2 id="subtitle">Your code is:</h2>
-            {{ if error }}
+            {% if error %}
             <h1 id="error">{{ error }}</h1>
-            {{ else }}
+            {% else %}
             <h1 id="code">{{ code }}</h1>
-            {{ endif }}
+            {% endif %}
             <button id="button">Copy To Clipboard</button>
         </div>
         <script>
