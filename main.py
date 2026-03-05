@@ -180,10 +180,12 @@ def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
         chunk_hashes[chunk_id] = hashlib.md5()
     
     file_handles[chunk_id].write(data["payload"])
+    file_handles[chunk_id].flush()
     chunk_hashes[chunk_id].update(data["payload"])
     if (worker.get_discord_id()):
         state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
     state.downloaded_bytes += len(data["payload"])
+    del data["payload"] # Try to reduce memory consumption
     chunk.update_worker_status_uploaded(worker.get_id(), file_handles[chunk_id].tell())
 
     if (file_handles[chunk_id].tell() != chunk.get_end() - chunk.get_start()):
