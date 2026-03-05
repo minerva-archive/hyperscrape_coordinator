@@ -150,7 +150,7 @@ def get_chunks(worker: Worker, data: dict):
     state.assigned_chunks += len(chunks_to_download)
     return WSMessage(WSMessageType.CHUNK_RESPONSE, response)
 
-def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], chunk_hashes: dict[str, object], file_paths: dict[str, str]):
+def upload_chunk(worker: Worker, data: dict):
     chunk_id = data.get("chunk_id", None)
     file_id = data.get("file_id", None)
 
@@ -173,28 +173,28 @@ def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
     temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.get_path())
     # Check if a handle exits for this chunk
     chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker.get_id())
-    if (not chunk_id in file_handles):
+    if (not chunk_id in worker.get_file_handles()):
         os.makedirs(os.path.dirname(chunk_path), exist_ok=True)
-        file_handles[chunk_id] = open(chunk_path + ".partial", 'wb')
-        file_paths[chunk_id] = chunk_path + ".partial"
-        chunk_hashes[chunk_id] = hashlib.md5()
+        worker.set_file_handle(chunk_id, open(chunk_path + ".partial", 'wb'))
+        worker.set_file_path(chunk_id, chunk_path + ".partial")
+        worker.set_chunk_hash(chunk_id, hashlib.md5())
     
-    file_handles[chunk_id].write(data["payload"])
-    file_handles[chunk_id].flush()
-    chunk_hashes[chunk_id].update(data["payload"])
+    worker.get_file_handle(chunk_id).write(data["payload"])
+    worker.get_file_handle(chunk_id).flush()
+    worker.get_chunk_hash(chunk_id).update(data["payload"])
     if (worker.get_discord_id()):
         state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
     state.downloaded_bytes += len(data["payload"])
     del data["payload"] # Try to reduce memory consumption
-    chunk.update_worker_status_uploaded(worker.get_id(), file_handles[chunk_id].tell())
+    chunk.update_worker_status_uploaded(worker.get_id(), worker.get_file_handle(chunk_id).tell())
 
-    if (file_handles[chunk_id].tell() != chunk.get_end() - chunk.get_start()):
+    if (worker.get_file_handle(chunk_id).tell() != chunk.get_end() - chunk.get_start()):
         return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received"}) # Chunk not yet finished
 
-    chunk.mark_worker_status_complete(worker.get_id(), chunk_hashes[chunk_id].hexdigest()) # This chunk is now complete
-    del chunk_hashes[chunk_id]
-    file_handles[chunk_id].close() # Close the file
-    del file_handles[chunk_id]
+    chunk.mark_worker_status_complete(worker.get_id(), worker.get_chunk_hash(chunk_id).hexdigest()) # This chunk is now complete
+    worker.remove_chunk_hash(chunk_id)
+    worker.close_file_handle(chunk_id)
+    worker.remove_file_path(chunk_id)
     os.replace(chunk_path + ".partial", chunk_path)
     state.assigned_chunks -= 1
     state.completed_chunks += 1
@@ -305,15 +305,14 @@ def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
     state.completed_files += 1
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload entire file complete!"})
 
-def detach_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], chunk_hashes: dict[str, object], file_paths: dict[str, str]):
+def detach_chunk(worker: Worker, data: dict):
     chunk_id = data["chunk_id"]
     with state.chunks[chunk_id].get_lock():
-        if (chunk_id in file_handles):
-            file_handles[chunk_id].close()
-            del file_handles[chunk_id]
-            del chunk_hashes[chunk_id]
-            os.remove(file_paths[chunk_id])
-            del file_paths[chunk_id]
+        if (chunk_id in worker.get_file_handles()):
+            worker.close_file_handle(chunk_id)
+            os.remove(worker.get_file_path(chunk_id))
+            worker.remove_file_path(chunk_id)
+            worker.remove_chunk_hash(chunk_id)
         if (state.chunks[chunk_id].has_worker(worker.get_id())):
             state.chunks[chunk_id].remove_worker_status(worker.get_id())
             state.assigned_chunks -= 1
@@ -321,9 +320,6 @@ def detach_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
 
 async def handler(websocket: ServerConnection):
     worker: Worker = None
-    file_handles: dict[str, FileIO] = {} # File handles for each chunk this worker is uploading
-    chunk_hashes: dict[str, object] = {}
-    file_paths: dict[str, str] = {} # Chunk to path
     while True:
         try:
             data = await asyncio.wait_for(websocket.recv(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
@@ -339,23 +335,16 @@ async def handler(websocket: ServerConnection):
             elif (message.get_type() == WSMessageType.GET_CHUNKS):
                 response = get_chunks(worker, message.get_payload())
             elif (message.get_type() == WSMessageType.UPLOAD_SUBCHUNK):
-                response = upload_chunk(worker, message.get_payload(), file_handles, chunk_hashes, file_paths)
+                response = upload_chunk(worker, message.get_payload())
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
-                response = detach_chunk(worker, message.get_payload(), file_handles, chunk_hashes, file_paths)
+                response = detach_chunk(worker, message.get_payload())
             await websocket.send(response.encode())
         except Exception as e:
             try:
                 await websocket.close()
             except:
                 pass
-            for chunk_id in file_handles:
-                file_handles[chunk_id].close()
-                os.remove(file_paths[chunk_id]) # Delete our partials
-                state.chunks[chunk_id].remove_worker_status(worker.get_id())
-                state.assigned_chunks -= 1
-            if (worker):
-                with state.workers_lock:
-                    del state.workers[worker.get_id()]
+            state.remove_worker(worker.get_id())
             return
 
 gc_thread = Thread(target=background_coordinator)
