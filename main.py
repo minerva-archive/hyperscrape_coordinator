@@ -327,6 +327,10 @@ async def handler(websocket: ServerConnection):
             response = WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Message failure!"})
             if (message.get_type() == WSMessageType.REGISTER):
                 response = register_worker(websocket.request.headers.get("x-forwarded-for"), message.get_payload())
+                if (not response.get_payload().get("worker_id", None)):
+                    await websocket.send(response.encode())
+                    await websocket.close()
+                    raise "Bad worker register message"
                 worker = state.workers[response.get_payload()["worker_id"]]
             elif (message.get_type() == WSMessageType.GET_CHUNKS):
                 response = get_chunks(worker, message.get_payload())
@@ -335,7 +339,7 @@ async def handler(websocket: ServerConnection):
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
                 response = detach_chunk(worker, message.get_payload(), file_handles, chunk_hashes, file_paths)
             await websocket.send(response.encode())
-        except (ConnectionClosedOK, ConnectionClosedError, TimeoutError):
+        except Exception as e:
             try:
                 await websocket.close()
             except:
@@ -348,7 +352,7 @@ async def handler(websocket: ServerConnection):
             if (worker):
                 with state.workers_lock:
                     del state.workers[worker.get_id()]
-            break
+            return
 
 gc_thread = Thread(target=background_coordinator)
 gc_thread.start()
