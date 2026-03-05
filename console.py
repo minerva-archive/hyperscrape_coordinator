@@ -106,7 +106,7 @@ class Console():
 
     def quit(self, argv):
         print("Removing workers...")
-        for worker_id in state.workers:
+        for worker_id in list(state.workers.keys()):
             state.remove_worker(worker_id)
         print("Done!")
         print("Saving state...")
