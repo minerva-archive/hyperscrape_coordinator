@@ -18,7 +18,6 @@ from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
 import argparse
 
-from web_api import start_web_api
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
 from websockets.asyncio.server import serve
@@ -362,6 +361,7 @@ console = Console()
 async def main():
     async with serve(handler, "", state.config["server"]["port"], max_queue=128) as server:
         print(f"Listening on port {state.config["server"]["port"]}")
+        from web_api import start_web_api # Here to avoid patching our important stuff (i know what i said)
         start_web_api()
         console.start()
         await server.serve_forever()
