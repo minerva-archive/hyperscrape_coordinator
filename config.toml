@@ -2,7 +2,7 @@
 port = 8081
 
 [server.http] # For API and code server
-port = 8082 # The port for the api and code server
+port = 8080 # The port for the api and code server
 threads = 4096
 backlog = 8192
 
