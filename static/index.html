@@ -2,6 +2,10 @@
 <html>
     <head>
         <style>
+            html, body
+            {
+                margin: 0;
+            }
             *
             {
                 font-family: monospace;
@@ -14,12 +18,13 @@
                 display: flex;
                 flex-direction: row;
                 flex-wrap: wrap;
+                margin-top: 0;
             }
             .stats-card
             {
                 border: 2px white solid;
-                margin: 1em;
-                padding: 1em;
+                margin: 16px;
+                padding: 16px;
             }
             .stats-card > *
             {
@@ -32,8 +37,8 @@
 
             .leaderboard-wrapper
             {
-                width: calc(100% - 2em);
-                padding: 1em;
+                width: calc(100% - 32px);
+                padding: 16px;
                 display: flex;
                 flex-direction: column;
             }
@@ -48,7 +53,7 @@
             {
                 width: 32px;
                 height: 32px;
-                margin-right: 1em;
+                margin-right: 16px;
                 border-radius: 100%;
             }
 
@@ -69,10 +74,16 @@
                 border-bottom: solid white 2px;
                 border-top: solid white 2px;
             }
+
+            a:hover
+            {
+                font-weight: bold;
+            }
         </style>
     </head>
     <body>
-        <h1>Minerva Archival Stats</h1>
+        <h1 style="margin-bottom: 0; padding-bottom: 0; margin-left: 16px; margin-top: 16px;">Minerva Archival Stats</h1>
+        <p style="margin: 0; margin-left: 16px; padding: 0; margin-bottom: 2px;">Powered by <a href="https://github.com/minerva-archive/hyperscrape_worker">Hyperscraper</a> - Created by <a href="https://hackerdude.tech">Hackerdude</a></p>
         <div class="stats">
             <div class="stats-card">
                 <h1 id="downloaded_bytes"></h1>
