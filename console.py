@@ -1,13 +1,13 @@
 import os
 import sys
-from threading import Thread
 import time
+from threading import Thread
 from typing import Callable
 
 import state
 
 
-class Console():
+class Console:
     def __init__(self):
         self._should_run = True
         self._thread = Thread(target=self.main_thread)
@@ -15,10 +15,16 @@ class Console():
             "help": [self.help, "Print information about available commands"],
             "list-workers": [self.list_workers, "List workers"],
             "list-files": [self.list_files, "List files"],
-            "get-file": [self.get_file, "List chunks for a file and other info (specify file id as second arg)"],
+            "get-file": [
+                self.get_file,
+                "List chunks for a file and other info (specify file id as second arg)",
+            ],
             "list-downloadable": [self.list_downloadable, "List downloadable files"],
-            "get-chunk": [self.get_chunk, "Get chunk info (specify chunk id as second arg)"],
-            "quit": [self.quit, "Shutdown the server"]
+            "get-chunk": [
+                self.get_chunk,
+                "Get chunk info (specify chunk id as second arg)",
+            ],
+            "quit": [self.quit, "Shutdown the server"],
         }
 
     def print(self, string):
@@ -30,16 +36,18 @@ class Console():
     def main_thread(self):
         print("[INITIALISING MAIN CONSOLE]")
         while True:
-            argv = input(">>> ").split(' ')
+            argv = input(">>> ").split(" ")
             command = argv[0]
-            if (command in self._commands):
+            if command in self._commands:
                 try:
                     self._commands[command][0](argv)
                 except Exception as e:
                     print(f"Error:\n{repr(e)}\n")
             else:
-                print(f"Unknown command {command} - Use 'help' to list available commands")
-            
+                print(
+                    f"Unknown command {command} - Use 'help' to list available commands"
+                )
+
     def help(self, argv):
         print("REGISTERED COMMANDS:")
         for command in self._commands:
@@ -47,16 +55,31 @@ class Console():
 
     def list_downloadable(self, argv):
         print("Downloadable Files:")
-        self.dynamic_list(state.sorted_downloadable_files, displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].get_path()})")
+        self.dynamic_list(
+            state.sorted_downloadable_files,
+            displayFunction=lambda index, el: (
+                f"{index}. {el} ({state.files[el].get_path()})"
+            ),
+        )
 
     def list_workers(self, argv):
         print("Workers:")
-        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)")
+        self.dynamic_list(
+            list(state.workers.keys()),
+            displayFunction=lambda index, worker_id: (
+                f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)"
+            ),
+        )
 
     def list_files(self, argv):
         print("Files (path, complete):")
-        self.dynamic_list(list(state.files.keys()), displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})")
-    
+        self.dynamic_list(
+            list(state.files.keys()),
+            displayFunction=lambda index, file_id: (
+                f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})"
+            ),
+        )
+
     def get_file(self, argv):
         file_id = argv[1]
         file = state.files[file_id]
@@ -65,7 +88,12 @@ class Console():
         print(f"Size: {file.get_total_size()}")
         print(f"URL: {file.get_url()}")
         print(f"Chunks for {file_id}:")
-        self.dynamic_list(file.get_chunks(), displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})")
+        self.dynamic_list(
+            file.get_chunks(),
+            displayFunction=lambda index, chunk_id: (
+                f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})"
+            ),
+        )
 
     def get_chunk(self, argv):
         chunk = state.chunks[argv[1]]
@@ -73,28 +101,32 @@ class Console():
         print(f"Range: [{chunk.get_start()}, {chunk.get_end()}]")
         print("Workers:")
         for worker_id in chunk.get_workers():
-            print(f"- {worker_id} D: {chunk.get_worker_status(worker_id).get_downloaded()}\tU: {chunk.get_worker_status(worker_id).get_uploaded()}\tH: {chunk.get_worker_status(worker_id).get_hash()}\tC: {chunk.get_worker_status(worker_id).get_complete()}\tLU: {round(time.time() - chunk.get_worker_status(worker_id).get_last_updated(), 2)}s ago")
+            print(
+                f"- {worker_id} D: {chunk.get_worker_status(worker_id).get_downloaded()}\tU: {chunk.get_worker_status(worker_id).get_uploaded()}\tH: {chunk.get_worker_status(worker_id).get_hash()}\tC: {chunk.get_worker_status(worker_id).get_complete()}\tLU: {round(time.time() - chunk.get_worker_status(worker_id).get_last_updated(), 2)}s ago"
+            )
 
-    def dynamic_list(self, list: list[object], displayFunction: Callable[[int, object], str]):
+    def dynamic_list(
+        self, list: list[object], displayFunction: Callable[[int, object], str]
+    ):
         list_index = 0
         list_size = 10
         while True:
-            list_elements = list[list_index:list_index+list_size]
+            list_elements = list[list_index : list_index + list_size]
             i = 0
             for element in list_elements:
-                print(displayFunction(list_index+i, element))
+                print(displayFunction(list_index + i, element))
                 i += 1
-            print(f"({(list_index//list_size)+1}/{(len(list)//list_size)+1})")
+            print(f"({(list_index // list_size) + 1}/{(len(list) // list_size) + 1})")
             command = input("(U)p, (D)own, (M)ore, (L)ess, (Q)uit >>>").upper()
-            if (command == "U"):
+            if command == "U":
                 list_index = max(0, list_index - list_size)
-            elif (command == "D"):
-                list_index = min(max(len(list)-list_size, 0), list_index + list_size)
-            elif (command == "M"):
+            elif command == "D":
+                list_index = min(max(len(list) - list_size, 0), list_index + list_size)
+            elif command == "M":
                 list_size += 10
-            elif (command == "L"):
+            elif command == "L":
                 list_size = max(10, list_size - 10)
-            elif (command == "Q"):
+            elif command == "Q":
                 break
             else:
                 print("ERR: Command must be one of U, D, M, L or Q")
