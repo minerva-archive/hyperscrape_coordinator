@@ -12,8 +12,8 @@ version = 3 # The coordinator version
 worker_timeout = 600 # Disconect workers if they're idle for 10 minutes
 
 # @TODO: DEBUGGING ONLY SET THIS TO 3 OR MORE
-trust_count = 3 # How many workers need to download the same chunk before we trust that it is accurate (obviouly a higher number slows down the overall download!)
+trust_count = 2 # How many workers need to download the same chunk before we trust that it is accurate (obviouly a higher number slows down the overall download!)
 
 [paths]
-chunk_temp_path = "./staging/temp"
-storage_path = "./staging"
+chunk_temp_path = "/mnt/cephfs/hyperscrape/temp"
+storage_path = "/mnt/cephfs/hyperscrape/"
