@@ -244,7 +244,7 @@ def load_files():
             print("Generating files to download...")
             for file_id in files:
                 file = files[file_id]
-                total_bytes += file.get_total_size()
+                total_bytes += file.get_total_size() * config["general"]["trust_count"]
                 if (file.get_complete()):
                     completed_files += 1
                     downloaded_bytes += file.get_total_size()
