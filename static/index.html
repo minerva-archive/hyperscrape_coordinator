@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+    <head>
+
+    </head>
+    <body>
+        <h1>Minerva Archival Stats</h1>
+        <div>
+            <div>
+                <h1 id="active_workers"></h1>
+                <h2>Current Speed Workers</h2>
+            </div>
+            <div>
+                <h1 id="active_workers"></h1>
+                <h2>Active Workers</h2>
+            </div>
+            <div>
+                <h1 id="assigned"></h1>
+                <h2>Assigned Chunks</h2>
+            </div>
+            <div>
+                <h1 id="completed_files"></h1>
+                <h2>Completed Files</h2>
+            </div>
+            <div>
+                <h1 id="downloaded_bytes"></h1>
+                <h2>Downloaded</h2>
+            </div>
+            <div>
+                <h1 id="total_bytes"></h1>
+                <h2>Total Files</h2>
+            </div>
+        </div>
+        <p>Top Contributors</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>User</th>
+                    <th>Total Files Downloaded</th>
+                    <th>Total Chunks Downloaded</th>
+                    <th>Total Data Downloaded</th>
+                </tr>
+            </thead>
+            <tbody id="table_body"></tbody>
+        </table>
+
+        <script>
+            setInterval(() => {
+                fetch("http://127.0.0.1:8082/api/leaderboard")
+            }, 2000);
+        </script>
+    </body>
+</html>

@@ -4,11 +4,12 @@ import os
 from threading import Thread
 from uuid import uuid4
 
+import requests
 from websockets import ConnectionClosedError, ConnectionClosedOK, ServerConnection
 from auth_token import AuthToken
 from console import Console
 from files import HyperscrapeChunk
-from gc_thread import gc
+from background_coordinator_thread import background_coordinator
 import state
 import hashlib
 import shutil
@@ -17,6 +18,7 @@ from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
 import argparse
 
+from web_api import start_web_api
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
 from websockets.asyncio.server import serve
@@ -48,10 +50,40 @@ def register_worker(ip: str, data: dict):
     if (data["version"] > state.config['general']['version']):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": f"Version mismatch, expected {state.config['general']['version']}"})
     
+    discord_id = None
+    discord_username = None
+    avatar_url = None
+    if (data["discord_token"]):
+        API_ENDPOINT = 'https://discord.com/api/v10'
+        req_data = {
+            'grant_type': 'authorization_code',
+            'code': data["discord_token"],
+            'redirect_uri': state.secrets["discord"]["redirect_uri"]
+        }
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        r = requests.post('%s/oauth2/token' % API_ENDPOINT, data=req_data, headers=headers, auth=(state.secrets["discord"]["client_id"], state.secrets["discord"]["client_secret"]))
+        if (r.status_code == 200):
+            res_data = r.json()
+            r = requests.get("https://discord.com/api/users/@me", headers={
+                "Authorization": f"Bearer {res_data['access_token']}"
+            })
+            if (r.status_code == 200):
+                res_data = r.json()
+                discord_id = res_data["id"]
+                discord_username = res_data["global_name"] # Use the display name
+                avatar_url = f"https://cdn.discordapp.com/avatars/{res_data['id']}/{res_data['avatar']}.png"
+
+    
     worker_id = str(uuid4())
     auth_token = AuthToken(worker_id)
     with state.workers_lock:
-        state.workers[worker_id] = Worker(worker_id, ip, auth_token.nonce, data["max_concurrent"])
+        state.workers[worker_id] = Worker(worker_id, ip, auth_token.nonce, data["max_concurrent"], discord_id)
+    if (discord_id and not discord_id in state.current_leaderboard):
+        with state.current_leaderboard_lock:
+            state.current_leaderboard[discord_id] = state.LeaderboardObject(discord_id, discord_username, avatar_url, 0, 0)
+
     return WSMessage(WSMessageType.REGISTER_RESPONSE, {
         "worker_id": worker_id,
         "auth_token": auth_token.as_token()
@@ -162,6 +194,7 @@ def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
     chunk_hashes[chunk_id].update(data["payload"])
     if (worker.get_discord_id()):
         state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
+    state.downloaded_bytes += len(data["payload"])
     chunk.update_worker_status_uploaded(worker.get_id(), file_handles[chunk_id].tell())
 
     if (file_handles[chunk_id].tell() != chunk.get_end() - chunk.get_start()):
@@ -172,6 +205,7 @@ def upload_chunk(worker: Worker, data: dict, file_handles: dict[str, FileIO], ch
     file_handles[chunk_id].close() # Close the file
     del file_handles[chunk_id]
     os.rename(chunk_path + ".partial", chunk_path)
+    state.assigned_chunks -= 1
     state.completed_chunks += 1
     if (worker.get_discord_id()):
         state.update_stats_chunks(worker.get_discord_id(), 1)
@@ -328,7 +362,7 @@ async def handler(websocket: ServerConnection):
                     del state.workers[worker.get_id()]
             break
 
-gc_thread = Thread(target=gc)
+gc_thread = Thread(target=background_coordinator)
 gc_thread.start()
 
 console = Console()
@@ -336,6 +370,7 @@ console = Console()
 async def main():
     async with serve(handler, "", state.config["server"]["port"]) as server:
         print(f"Listening on port {state.config["server"]["port"]}")
+        start_web_api()
         console.start()
         await server.serve_forever()
 

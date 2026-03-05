@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            *
+            {
+                font-family: monospace;
+                background-color: #000;
+                color: #FFF;
+            }
+            body
+            {
+                margin: 0;
+                padding: 0;
+            }
+
+            h1
+            {
+                text-align: center;
+            }
+
+            div
+            {
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+            }
+
+            #title
+            {
+                margin-bottom: 2em;
+            }
+
+            #subtitle, #code
+            {
+                margin: 0;
+            }
+            
+
+            h2
+            {
+                font-size: 2em;
+            }
+
+            h1
+            {
+                font-size: 3em;
+            }
+
+            #code
+            {
+                padding: 0.25em;
+                border-radius: 15px;
+                background: #1c1c1c;
+                box-shadow: inset 3px 3px 5px #0b0b0b,
+                            inset -3px -3px 5px #2d2d2d;
+            }
+
+            button
+            {
+                border: unset;
+                box-shadow: unset;
+                border-radius: 5px;
+                background-color: #333;
+                padding: 1em;
+                margin-top: 1em;
+                transition: background-color 0.25s;
+                cursor: pointer;
+            }
+
+            button:hover
+            {
+                background-color: #222;
+            }
+
+            button:active
+            {
+                background-color: #111;
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <h2 id="title">Minerva Hyperscrape Authentication</h2>
+            <h2 id="subtitle">Your code is:</h2>
+            <h1 id="code">Loading...</h1>
+            <button id="button">Copy To Clipboard</button>
+        </div>
+        <script>
+            try
+            {
+                document.getElementById("code").innerText = (new URLSearchParams(location.search)).get("code");
+                if (document.getElementById("code").innerText == "")
+                {
+                    throw "";
+                }
+                document.getElementById("button").addEventListener("click", (event) => {
+                    navigator.clipboard.writeText((new URLSearchParams(location.search)).get("code"));
+                })
+            }
+            catch
+            {
+                document.getElementById("code").innerText = "Could not load code";
+                document.getElementById("code").style = "color: red;"
+            }
+        </script>
+    </body>
+</html>

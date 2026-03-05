@@ -209,3 +209,4 @@ __marimo__/
 # State files
 *.bin
 staging
+secrets.toml

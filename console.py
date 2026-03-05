@@ -18,6 +18,7 @@ class Console():
             "get-file": [self.get_file, "List chunks for a file and other info (specify file id as second arg)"],
             "list-downloadable": [self.list_downloadable, "List downloadable files"],
             "get-chunk": [self.get_chunk, "Get chunk info (specify chunk id as second arg)"],
+            "save": [self.save, "Save current info"],
             "quit": [self.quit, "Shutdown the server"]
         }
 
@@ -104,3 +105,7 @@ class Console():
         state.save_data_files()
         print("Quitting!")
         os._exit(0)
+
+    def save(self, argv):
+        print("Saving state...")
+        state.save_data_files()

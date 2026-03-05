@@ -56,20 +56,24 @@ global completed_files
 global completed_chunks
 global assigned_chunks
 global failed_chunks
+global downloaded_bytes
 global total_bytes
+global current_speed
 completed_files = 0
 completed_chunks = 0
 assigned_chunks = 0
 failed_chunks = 0
+downloaded_bytes = 0
 total_bytes = 0
+current_speed = 0
 
 class LeaderboardObject():
-    def __init__(self, discord_id: str, discord_username: str, avatar_url: str, total_chunks: int = 0, total_bytes: int = 0):
+    def __init__(self, discord_id: str, discord_username: str, avatar_url: str, downloaded_chunks: int = 0, downloaded_bytes: int = 0):
         self._discord_id = discord_id
         self._discord_username = discord_username
         self._avatar_url = avatar_url
-        self._total_chunks = total_chunks
-        self._total_bytes = total_bytes
+        self._downloaded_chunks = downloaded_chunks
+        self._downloaded_bytes = downloaded_bytes
 
     def get_discord_id(self):
         return self._discord_id
@@ -80,17 +84,17 @@ class LeaderboardObject():
     def get_avatar_url(self):
         return self._avatar_url
     
-    def get_total_chunks(self):
-        return self._total_chunks
+    def get_downloaded_chunks(self):
+        return self._downloaded_chunks
     
-    def get_total_bytes(self):
-        return self._total_bytes
+    def get_downloaded_bytes(self):
+        return self._downloaded_bytes
     
-    def update_total_bytes(self, change: int):
-        self._total_bytes += change
+    def update_downloaded_bytes(self, change: int):
+        self._downloaded_bytes += change
     
-    def update_total_chunks(self, change: int):
-        self._total_chunks += change
+    def update_downloaded_chunks(self, change: int):
+        self._downloaded_chunks += change
 
 
 global current_leaderboard
@@ -104,14 +108,14 @@ current_leaderboard_lock = Lock()
 ###
 
 def update_stats_bytes(discord_id: str, byte_count: int):
-    current_leaderboard[discord_id].update_total_bytes(byte_count)
+    current_leaderboard[discord_id].update_downloaded_bytes(byte_count)
 
 def update_stats_chunks(discord_id: str, chunk_count: int):
-    current_leaderboard[discord_id].update_total_chunks(chunk_count)
+    current_leaderboard[discord_id].update_downloaded_chunks(chunk_count)
 
 def order_leaderboard():
     global current_leaderboard_order
-    current_leaderboard_order = sorted(current_leaderboard, key=lambda key: current_leaderboard[key].get_total_bytes(), reverse=True)
+    current_leaderboard_order = sorted(current_leaderboard, key=lambda key: current_leaderboard[key].get_downloaded_bytes(), reverse=True)
 
 ###
 # State Files
@@ -148,6 +152,11 @@ with open("./config.toml", 'rb') as file:
     config = tomllib.load(file)
 os.makedirs(config["paths"]["chunk_temp_path"], exist_ok=True)
 os.makedirs(config["paths"]["storage_path"], exist_ok=True)
+
+global secrets
+secrets = None
+with open("./secrets.toml", 'rb') as file:
+    secrets = tomllib.load(file)
 
 ###
 # State helpers
@@ -215,20 +224,21 @@ try:
         chunks = pickle.load(file)
     with open("./file_hashes.bin", 'rb') as file:
         file_hashes = pickle.load(file)
-    with open("./leaderboard.bin", 'rb') as file:
-        current_leaderboard = pickle.load(file)
     print("Generating files to download...")
     for file_id in files:
         file = files[file_id]
+        total_bytes += file.get_total_size()
         if (file.get_complete()):
             completed_files += 1
-            total_bytes += file.get_total_size()
+            downloaded_bytes += file.get_total_size()
             completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
         else:
             sorted_downloadable_files.append(file_id)
             file_worker_counts[file_id] = 0
         del file
     print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")
+    with open("./leaderboard.bin", 'rb') as file:
+        current_leaderboard = pickle.load(file)
 except Exception as e:
     print("NOTE: Could not load previous file state:")
     print(e)
