@@ -2,7 +2,7 @@ from threading import Thread
 import time
 from flask import Flask, render_template, request
 import requests
-from waitress.server import create_server
+from gevent.pywsgi import WSGIServer
 import state
 
 web_api_app = Flask(__name__, template_folder="./static/")
@@ -73,14 +73,11 @@ def html_index():
 def run_web_api():
     while True:
         try:
-            server = create_server(web_api_app, host='0.0.0.0', port=state.config["server"]["http"]["port"], threads=state.config["server"]["http"]["threads"], backlog=state.config["server"]["http"]["backlog"])
-            server.run()
-            time.sleep(120)
-            server.close()
-            del server
+            http_server = WSGIServer(("127.0.0.1", state.config["server"]["http"]["port"]), web_api_app)
+            http_server.serve_forever()
         except Exception as e:
-            print(f"Waitress, the stupid server, crashed again: {e}")
-            time.sleep(5)
+            print(f"WSGIServer, the stupid server, crashed again: {e}")
+        time.sleep(5)
 
 def start_web_api():
     thread = Thread(target=run_web_api)
