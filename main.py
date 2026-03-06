@@ -381,7 +381,7 @@ gc_thread.start()
 console = Console()
 
 async def main():
-    async with serve(handler, "", state.config["server"]["port"], max_queue=128, ping_interval=60, ping_timeout=60) as server:
+    async with serve(handler, "", state.config["server"]["port"], max_queue=128, ping_interval=60, ping_timeout=600) as server:
         print(f"Listening on port {state.config["server"]["port"]}")
         from web_api import start_web_api # Here to avoid patching our important stuff (i know what i said)
         start_web_api()
