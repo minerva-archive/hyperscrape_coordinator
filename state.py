@@ -23,6 +23,9 @@ try:
 except:
     pass
 
+global shutting_down
+shutting_down = False
+
 global workers
 global files
 global chunks
