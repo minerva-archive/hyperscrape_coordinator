@@ -75,6 +75,49 @@ class StateDB:
             cur = self._conn.execute("SELECT * FROM leaderboard ORDER BY downloaded_bytes DESC")
             return cur.fetchall()
 
+    # file mutations
+
+    def insert_file(self, file_id: str, path: str, size: int, url: str, chunk_size: int):
+        def write(conn):
+            with conn:
+                cur = conn.execute(
+                    "INSERT INTO file (id, path, size, url, chunk_size) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (file_id, path, size, url, chunk_size)
+                )
+                return cur.fetchone()
+        return self._write(write)
+
+    def set_file_size(self, file_id: str, size: int):
+        def write(conn):
+            with conn:
+                cur = conn.execute(
+                    "UPDATE file SET size = ? WHERE id = ?",
+                    (size, file_id)
+                )
+                return cur.fetchone()
+        return self._write(write)
+
+    def set_file_chunk_size(self, file_id: str, chunk_size: int):
+        def write(conn):
+            with conn:
+                cur = conn.execute(
+                    "UPDATE file SET chunk_size = ? WHERE id = ?",
+                    (chunk_size, file_id)
+                )
+                return cur.fetchone()
+        return self._write(write)
+
+    def set_file_complete(self, file_id: str):
+        def write(conn):
+            with conn:
+                cur = conn.execute(
+                    "UPDATE file SET complete = 1 WHERE id = ?",
+                    (file_id,)
+                )
+                return cur.fetchone()
+        return self._write(write)
+
     # file hash mutations
 
     def insert_file_hash(self, file_id: str, md5: str, sha1: str, sha256: str):
@@ -89,6 +132,18 @@ class StateDB:
         return self._write(write)
 
     # leaderboard mutations
+
+    def insert_leaderboard_entry(self, discord_id: str, discord_username: str, avatar_url: str):
+        def write(conn):
+            with conn:
+                cur = conn.execute(
+                    "INSERT INTO leaderboard (discord_id, discord_username, avatar_url) "
+                    "VALUES (?, ?, ?) "
+                    "ON CONFLICT (discord_id) DO NOTHING",
+                    (discord_id, discord_username, avatar_url)
+                )
+                return cur.fetchone()
+        return self._write(write)
 
     def update_leaderboard_downloaded_bytes(self, discord_id: str, change: int):
         def write(conn):

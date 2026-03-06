@@ -5,6 +5,8 @@ import os
 from tqdm import tqdm
 import argparse
 
+from state_db import db
+
 parser = argparse.ArgumentParser(
                     prog='Filelist Generator',
                     description='Generates a filelist for Hyperscrape\'s coordinator',
@@ -66,6 +68,13 @@ for file_path in tqdm(full_list):
         int(file_sizes[file_path]),
         f"https://myrient.erista.me/files/{file_path[2:]}",
         (1024*1024)*50 # 50MB chunks
+    )
+    db.insert_file(
+        file_id,
+        file_path,
+        int(file_sizes[file_path]),
+        f"https://myrient.erista.me/files/{file_path[2:]}",
+        (1024*1024)*50
     )
     state.file_worker_counts[file_id] = 0
     state.sorted_downloadable_files.append(file_id)

@@ -1,6 +1,9 @@
 from threading import Lock
 import time
 
+from state_db import db
+
+
 class WorkerStatus():
     def __init__(self, downloaded: int = 0, uploaded: int = 0, complete: bool = False, hash: str|None = None, last_updated: int | None = None):
         if last_updated is None:
@@ -142,6 +145,7 @@ class HyperscrapeFile():
     
     def set_total_size(self, total_size: int):
         self._total_size = total_size
+        db.set_file_size(self._file_id, total_size)
 
     def get_url(self) -> str:
         return self._url
@@ -151,6 +155,7 @@ class HyperscrapeFile():
     
     def set_chunk_size(self, chunk_size: int):
         self._chunk_size = chunk_size
+        db.set_file_chunk_size(self._file_id, chunk_size)
 
     def get_chunks(self) -> set[str]:
         return self._chunks
@@ -169,6 +174,7 @@ class HyperscrapeFile():
 
     def mark_complete(self):
         self._complete = True
+        db.set_file_complete(self._file_id)
 
     def get_lock(self) -> Lock:
         return self._lock
