@@ -146,6 +146,22 @@ def save_data_files():
     save_file_state()
     save_file_hashes()
     save_leaderboard_state()
+    try:
+        os.replace("./file_state.bin", "./file_state.bin.bck")
+    except:
+        pass
+    try:
+        os.replace("./chunk_state.bin", "./chunk_state.bin.bck")
+    except:
+        pass
+    try:
+        os.replace("./file_hashes.bin", "./file_hashes.bin.bck")
+    except:
+        pass
+    try:
+        os.replace("./leaderboard.bin", "./leaderboard.bin.bck")
+    except:
+        pass
     # Only once ALL state files are fully written, do we write them
     os.replace("./file_state.bin.temp", "./file_state.bin")
     os.replace("./chunk_state.bin.temp", "./chunk_state.bin")
