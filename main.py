@@ -356,11 +356,11 @@ async def handler(websocket: ServerConnection):
                 worker = state.workers[response.get_payload()["worker_id"]]
                 worker.set_websocket(websocket)
             elif (message.get_type() == WSMessageType.GET_CHUNKS):
-                response = get_chunks(worker, message.get_payload())
+                response = await asyncio.to_thread(get_chunks, worker, message.get_payload())
             elif (message.get_type() == WSMessageType.UPLOAD_SUBCHUNK):
-                response = upload_chunk(worker, message.get_payload())
+                response = await asyncio.to_thread(upload_chunk, worker, message.get_payload())
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
-                response = detach_chunk(worker, message.get_payload())
+                response = await asyncio.to_thread(detach_chunk, worker, message.get_payload())
             await websocket.send(response.encode())
         except InvalidUpgrade:
             return # What even causes this lol
