@@ -198,7 +198,7 @@ def remove_worker(worker_id: str):
                 workers[worker_id].get_websocket().close()
             except:
                 pass
-            for chunk_id in workers[worker_id].get_file_handles():
+            for chunk_id in list(workers[worker_id].get_file_handles().keys()):
                 workers[worker_id].close_file_handle(chunk_id)
                 os.remove(workers[worker_id].get_file_path(chunk_id)) # Delete our partials
                 workers[worker_id].remove_chunk_hash(chunk_id)
