@@ -332,6 +332,12 @@ async def handler(websocket: ServerConnection):
     while True:
         try:
             data = await asyncio.wait_for(websocket.recv(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
+            if data[:3] == b'\x00\x80\x05': # If we receive a legacy pickled request, send a legacy pickled resopnse with an error
+                await websocket.send(b'\x00\x80\x05\x95G\x00\x00\x00\x00\x00\x00\x00}\x94\x8c\x05error\x94\x8c8Your worker is using a legacy protocol - PLEASE UPGRADE!\x94s.')
+                await websocket.close()
+                if (worker):
+                    state.remove_worker(worker.get_id())
+                return
             message: WSMessage = WSMessage.decode(data)
             response = WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Message failure!"})
             if (message.get_type() == WSMessageType.REGISTER):
