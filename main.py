@@ -269,7 +269,7 @@ def upload_chunk(worker: Worker, data: dict):
 
         # If we are done though, then we should construct and move the entire file
         chunk_files = []
-        for chunk_id in chunk_file_object.get_chunks():
+        for chunk_id in sorted(chunk_file_object.get_chunks(), key=lambda chunk_id: state.chunks[chunk_id].get_start()):
             chunk = state.chunks[chunk_id]
             chunk_files.append(get_chunk_path(chunk_file_object.get_id(), chunk_id))
 
