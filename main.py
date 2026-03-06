@@ -351,8 +351,8 @@ async def handler(websocket: ServerConnection):
             await websocket.send(response.encode())
         except Exception as e:
             print(e)
-            print(f"Disconnecting worker {worker.get_id()} due to error.")
             if (worker):
+                print(f"Disconnecting worker {worker.get_id()} due to error.")
                 state.remove_worker(worker.get_id())
             try:
                 await websocket.close()
