@@ -7,7 +7,7 @@ threads = 4096
 backlog = 8192
 
 [general]
-version = 3 # The coordinator version
+version = 4 # The coordinator version
 
 worker_timeout = 600 # Disconect workers if they're idle for 10 minutes
 
