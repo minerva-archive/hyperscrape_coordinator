@@ -75,19 +75,20 @@ class StateDB:
             cur = self._conn.execute("SELECT * FROM leaderboard ORDER BY downloaded_bytes DESC")
             return cur.fetchall()
 
-    # leaderboard mutations
+    # file hash mutations
 
-    def insert_leaderboard_entry(self, discord_id: str, discord_username: str, avatar_url: str):
+    def insert_file_hash(self, file_id: str, md5: str, sha1: str, sha256: str):
         def write(conn):
             with conn:
                 cur = conn.execute(
-                    "INSERT INTO leaderboard (discord_id, discord_username, avatar_url) "
-                    "VALUES (?, ?, ?) "
-                    "ON CONFLICT (discord_id) DO NOTHING",
-                    (discord_id, discord_username, avatar_url)
+                    "INSERT INTO file_hash (file_id, md5, sha1, sha256) "
+                    "VALUES (?, ?, ?, ?)",
+                    (file_id, md5, sha1, sha256)
                 )
                 return cur.fetchone()
         return self._write(write)
+
+    # leaderboard mutations
 
     def update_leaderboard_downloaded_bytes(self, discord_id: str, change: int):
         def write(conn):

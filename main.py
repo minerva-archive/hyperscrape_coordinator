@@ -298,6 +298,13 @@ def upload_chunk(worker: Worker, data: dict):
             "sha1": sha1_hash.hexdigest(),
             "sha256": sha256_hash.hexdigest()
         }
+        db.insert_file_hash(
+            chunk_file_object.get_id(),
+            md5_hash.hexdigest(),
+            sha1_hash.hexdigest(),
+            sha256_hash.hexdigest()
+        )
+
         shutil.rmtree(temp_storage_folder, ignore_errors=True)
         chunk_file_object.mark_complete() # Mark file as actually complete
         for chunk_id in chunk_file_object.get_chunks():
