@@ -1,13 +1,13 @@
 import asyncio
-from io import FileIO
 import os
 from threading import Thread
-import urllib.parse
 from uuid import uuid4
 
+from fastapi.templating import Jinja2Templates
 import requests
 import urllib
-from websockets import ConnectionClosedError, ConnectionClosedOK, InvalidUpgrade, ServerConnection
+import uvicorn
+from websockets import InvalidUpgrade, ServerConnection
 from console import Console
 from files import HyperscrapeChunk
 from background_coordinator_thread import background_coordinator
@@ -17,19 +17,10 @@ import shutil
 
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
-import argparse
-
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
-from websockets.asyncio.server import serve
-
-
-parser = argparse.ArgumentParser(
-                    prog='Hyperscrape Coordinator',
-                    description='',
-                    epilog='Created by Hackerdude for Minerva')
-parser.add_argument("-d", "--debug", help="Use Waitress", action="store_true")
-args = parser.parse_args()
+from fastapi import FastAPI, WebSocket, Request
+from fastapi.responses import HTMLResponse
 
 print("=========================")
 print("=  HYPERSCRAPE SERVER   =")
@@ -351,20 +342,20 @@ def detach_chunk(worker: Worker, data: dict):
             state.assigned_chunks -= 1
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})
 
-async def handler(websocket: ServerConnection):
+async def handler(websocket: WebSocket, ip_address: str):
     worker: Worker = None
     while True:
         if (state.shutting_down):
             try:
-                websocket.send(WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Server is shutting down!"}))
+                websocket.send_bytes(WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Server is shutting down!"}).encode())
                 websocket.close()
             except:
                 pass
             return
         try:
-            data = await asyncio.wait_for(websocket.recv(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
+            data = await asyncio.wait_for(websocket.receive_bytes(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
             if data[:3] == b'\x00\x80\x05': # If we receive a legacy pickled request, send a legacy pickled resopnse with an error
-                await websocket.send(b'\x00\x80\x05\x95G\x00\x00\x00\x00\x00\x00\x00}\x94\x8c\x05error\x94\x8c8Your worker is using a legacy protocol - PLEASE UPGRADE!\x94s.')
+                await websocket.send_bytes(b'\x00\x80\x05\x95G\x00\x00\x00\x00\x00\x00\x00}\x94\x8c\x05error\x94\x8c8Your worker is using a legacy protocol - PLEASE UPGRADE!\x94s.')
                 await websocket.close()
                 if (worker):
                     state.remove_worker(worker.get_id())
@@ -372,9 +363,9 @@ async def handler(websocket: ServerConnection):
             message: WSMessage = WSMessage.decode(data)
             response = WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Message failure!"})
             if (message.get_type() == WSMessageType.REGISTER):
-                response = register_worker(websocket.request.headers.get("x-forwarded-for"), message.get_payload())
+                response = register_worker(ip_address, message.get_payload())
                 if (not response.get_payload().get("worker_id", None)):
-                    await websocket.send(response.encode())
+                    await websocket.send_bytes(response.encode())
                     await websocket.close()
                     raise Exception("Bad worker register message")
                 worker = state.workers[response.get_payload()["worker_id"]]
@@ -385,11 +376,11 @@ async def handler(websocket: ServerConnection):
                 response = await asyncio.to_thread(upload_chunk, worker, message.get_payload())
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
                 response = await asyncio.to_thread(detach_chunk, worker, message.get_payload())
-            await websocket.send(response.encode())
+            await websocket.send_bytes(response.encode())
         except InvalidUpgrade:
             return # What even causes this lol
         except Exception as e:
-            print(e)
+            print(repr(e))
             if (worker):
                 print(f"Disconnecting worker {worker.get_id()} due to error.")
                 state.remove_worker(worker.get_id())
@@ -404,13 +395,87 @@ gc_thread.start()
 
 console = Console()
 
-async def main():
-    async with serve(handler, "", state.config["server"]["port"], max_queue=128, ping_interval=60, ping_timeout=600) as server:
-        print(f"Listening on port {state.config["server"]["port"]}")
-        from web_api import start_web_api # Here to avoid patching our important stuff (i know what i said)
-        start_web_api()
-        console.start()
-        await server.serve_forever()
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+@app.websocket("/worker")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    ip = websocket.headers.get("x-forwarded-for", websocket.client.host)
+    await handler(websocket, ip)
+    try:
+        await websocket.close()
+    except:
+        pass
+
+@app.get("/api/stats")
+def get_stats():
+    total_files = len(state.files)
+    return {
+        "total_files": total_files,
+        "total_chunks": len(state.chunks),
+        "completed_files": state.completed_files,
+        "completed_chunks": state.completed_chunks,
+        "assigned": state.assigned_chunks,
+        "pending": total_files - state.completed_files,
+        "failed": state.failed_chunks,
+        "active_workers": len(state.workers),
+        "downloaded_bytes": state.downloaded_bytes,
+        "total_bytes": state.total_bytes,
+        "current_speed": state.current_speed
+    }
+
+
+@app.get("/api/leaderboard")
+def get_leaderboard(limit: int = 25, offset: int = 0):
+    response = []
+    for leaderboard_id in state.current_leaderboard_order[offset:limit]:
+        leaderboard_object = state.current_leaderboard[leaderboard_id]
+        response.append({
+            "discord_username": leaderboard_object.get_discord_username(),
+            "avatar_url": leaderboard_object.get_avatar_url(),
+            "downloaded_chunks": leaderboard_object.get_downloaded_chunks(),
+            "downloaded_bytes": leaderboard_object.get_downloaded_bytes()
+        })
+    return response
+
+@app.get("/code", response_class=HTMLResponse)
+def get_code(request: Request, code: str):
+    discord_code = code
+    API_ENDPOINT = 'https://discord.com/api/v10'
+    req_data = {
+        'grant_type': 'authorization_code',
+        'code': discord_code,
+        'redirect_uri': state.secrets["discord"]["redirect_uri"]
+    }
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    r = requests.post('%s/oauth2/token' % API_ENDPOINT, data=req_data, headers=headers, auth=(state.secrets["discord"]["client_id"], state.secrets["discord"]["client_secret"]))
+    error = None
+    access_token = None
+    if (r.status_code == 200):
+        access_token = r.json()["access_token"]
+    else:
+        error = "Could not load token"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="code.html",
+        context={
+            "code": access_token,
+            "error": error
+        }
+    )
+    
+@app.get("/")
+def slash_index(request: Request):
+    return templates.TemplateResponse(request=request, name="index.html")
+    
+@app.get("/index.html")
+def html_index(request: Request):
+    return templates.TemplateResponse(request=request, name="index.html")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    console.start()
+    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"])

@@ -2,3 +2,5 @@ flask
 waitress
 websockets
 msgspec
+fastapi[standard]
+jinja2
