@@ -87,6 +87,9 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
         if (file.get_total_size() == None):
             file.set_total_size(get_url_size(file.get_url()))
 
+        if (file.get_total_size() == 0):
+            continue # Skip empty files
+
         # If the file hasn't generated chunks then we need to do that!
         with file.get_lock():
             if (len(file.get_chunks()) == 0):

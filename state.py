@@ -286,7 +286,7 @@ def load_state_from_db():
             db_file["size"],
             db_file["url"],
             db_file["chunk_size"],
-            set(file_chunks.get(db_file["id"], [])),
+            file_chunks.get(db_file["id"], set()),
             bool(db_file["complete"]),
         )
 
@@ -329,7 +329,7 @@ def load_state():
             total_bytes += file.get_total_size() * config["general"]["trust_count"]
 
             # Regenerate chunks as needed
-            if (len(file.get_chunks()) == 0):
+            if (len(file.get_chunks()) == 0 and file.get_total_size() != 0):
                 print(f"Generating chunks for {file_id}...")
                 current_size = 0
                 with chunks_lock:
