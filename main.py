@@ -304,6 +304,7 @@ def upload_chunk(worker: Worker, data: dict):
                 os.remove(chunk_file_path)
         os.replace(destination_path + ".partial", destination_path)
         state.sorted_downloadable_files.remove(chunk_file_object.get_id()) # We don't want to download this again
+        completed_bytes += chunk_file_object.get_total_size()
         # Write hashes to db
         db.insert_file_hash(
             chunk_file_object.get_id(),
@@ -421,6 +422,7 @@ def get_stats():
         "failed": state.failed_chunks,
         "active_workers": len(state.workers),
         "downloaded_bytes": state.downloaded_bytes,
+        "completed_bytes": state.completed_bytes,
         "total_bytes": state.total_bytes,
         "current_speed": state.current_speed
     }

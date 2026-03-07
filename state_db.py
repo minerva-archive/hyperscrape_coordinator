@@ -191,7 +191,7 @@ class StateDB:
         def write(conn):
             with conn:
                 cur = conn.execute(
-                    "UPDATE worker SET hash = ? WHERE chunk_id = ? AND worker_id = ?",
+                    "UPDATE worker_status SET hash = ? WHERE chunk_id = ? AND worker_id = ?",
                     (hash, chunk_id, worker_id)
                 )
                 return cur.fetchone()
@@ -201,7 +201,7 @@ class StateDB:
         def write(conn):
             with conn:
                 cur = conn.execute(
-                    "UPDATE worker SET hash_only = ? WHERE chunk_id = ? AND worker_id = ?",
+                    "UPDATE worker_status SET hash_only = ? WHERE chunk_id = ? AND worker_id = ?",
                     (hash_only, chunk_id, worker_id)
                 )
                 return cur.fetchone()

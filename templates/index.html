@@ -86,6 +86,10 @@
         <p style="margin: 0; margin-left: 16px; padding: 0; margin-bottom: 2px;">Powered by <a href="https://github.com/minerva-archive/hyperscrape_worker">Hyperscraper</a> - Created by <a href="https://hackerdude.tech">Hackerdude</a></p>
         <div class="stats">
             <div class="stats-card">
+                <h1 id="completed_bytes"></h1>
+                <h2>Completed</h2>
+            </div>
+            <div class="stats-card">
                 <h1 id="downloaded_bytes"></h1>
                 <h2>Uploaded</h2>
             </div>
@@ -156,6 +160,7 @@
                 if (status_response.status == 200)
                 {
                     const status = await status_response.json();
+                    document.getElementById("completed_bytes").innerText = unitifier(status["completed_bytes"]) + 'B';
                     document.getElementById("downloaded_bytes").innerText = unitifier(status["downloaded_bytes"]) + 'B';
                     document.getElementById("total_bytes").innerText = unitifier(status["total_bytes"]) + 'B';
                     document.getElementById("current_speed").innerText = unitifier(status["current_speed"]) + "B/s";

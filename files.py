@@ -54,12 +54,12 @@ class HyperscrapeChunk():
     
     def update_worker_status_uploaded(self, worker_id: str, uploaded: int):
         with self.get_worker_lock(worker_id):
-            self.get_worker_uploaded(uploaded)
+            self.set_worker_uploaded(worker_id, uploaded)
             self.mark_worker_updated(worker_id)
 
     def mark_worker_status_complete(self, worker_id: str, hash: str):
         with self.get_worker_lock(worker_id):
-            self.get_worker_complete(worker_id, hash)
+            self.set_worker_complete(worker_id, hash)
             self.mark_worker_updated(worker_id)
             # The database MUST ONLY store already completed statuses
             db.insert_worker_status(self._chunk_id, worker_id, self._worker_status[worker_id]._uploaded, self._worker_status[worker_id]._hash, self._worker_status[worker_id]._hash_only)
@@ -85,7 +85,7 @@ class HyperscrapeChunk():
     def get_worker_uploaded(self, worker_id: str):
         return self._worker_status[worker_id]._uploaded
     
-    def get_worker_uploaded(self, worker_id: str, uploaded: int):
+    def set_worker_uploaded(self, worker_id: str, uploaded: int):
         self._worker_status[worker_id]._uploaded = uploaded
         db.set_worker_status_uploaded(self._chunk_id, worker_id, uploaded)
     

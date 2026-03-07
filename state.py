@@ -56,6 +56,7 @@ global completed_chunks
 global assigned_chunks
 global failed_chunks
 global downloaded_bytes
+global completed_bytes
 global total_bytes
 global current_speed
 completed_files = 0
@@ -63,6 +64,7 @@ completed_chunks = 0
 assigned_chunks = 0
 failed_chunks = 0
 downloaded_bytes = 0
+completed_bytes = 0
 total_bytes = 0
 current_speed = 0
 
@@ -264,10 +266,11 @@ def load_state():
     global current_leaderboard
     global total_bytes
     global completed_files
-    global downloaded_bytes
+    global completed_bytes
     global completed_chunks
     global sorted_downloadable_files
     global file_worker_counts
+    global downloaded_bytes
     global assigned_chunks
     print("Loading current state...")
     try:
@@ -278,7 +281,7 @@ def load_state():
             total_bytes += file.get_total_size() * config["general"]["trust_count"]
             if (file.get_complete()):
                 completed_files += 1
-                downloaded_bytes += file.get_total_size()
+                completed_bytes += file.get_total_size() * config["general"]["trust_count"]
                 completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
             else:
                 file_worker_counts[file_id] = 0
