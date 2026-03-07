@@ -82,13 +82,13 @@ class StateDB:
 
     # file mutations
 
-    def insert_file(self, file_id: str, path: str, size: int, url: str, chunk_size: int):
+    def insert_file(self, file_id: str, path: str, size: int, url: str, chunk_size: int, complete: bool = False):
         def write(conn):
             with conn:
                 cur = conn.execute(
-                    "INSERT INTO file (id, path, size, url, chunk_size) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (file_id, path, size, url, chunk_size)
+                    "INSERT INTO file (id, path, size, url, chunk_size, complete) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (file_id, path, size, url, chunk_size, complete)
                 )
                 return cur.fetchone()
         return self._write(write)
