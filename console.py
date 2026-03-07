@@ -1,10 +1,8 @@
-import os
-import sys
 from threading import Thread
-import time
 from typing import Callable
-
+import time
 import state
+import os
 
 
 class Console():

@@ -1,6 +1,7 @@
-import os
 import requests
+import os
 import state
+
 
 def get_url_size(url: str):
     try:

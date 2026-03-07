@@ -1,11 +1,11 @@
-import time
-from uuid import uuid4
 from files import HyperscrapeFile
-import os
+from state_db import db
+from uuid import uuid4
 from tqdm import tqdm
 import argparse
+import time
+import os
 
-from state_db import db
 
 parser = argparse.ArgumentParser(
                     prog='Filelist Generator',

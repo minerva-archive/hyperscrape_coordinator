@@ -1,6 +1,6 @@
+from threading import Lock
 from io import FileIO
 import time
-from threading import Lock
 
 from fastapi import WebSocket
 

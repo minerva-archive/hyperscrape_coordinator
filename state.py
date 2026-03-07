@@ -1,18 +1,16 @@
 ###
 # State vars
 ###
-from collections import OrderedDict, defaultdict
-import math
-import os
-from threading import Lock
-import time
-from uuid import uuid4
 from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
-from state_db import db
+from collections import defaultdict
+from threading import Lock
 from workers import Worker
 from msgspec import json
-import pickle
+from state_db import db
 import tomllib
+import math
+import time
+import os
 
 USER_AGENT = f"HyperscrapeServer/v1 (Created by Hackerdude for Minerva)"
 

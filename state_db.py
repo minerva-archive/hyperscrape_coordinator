@@ -1,7 +1,7 @@
-import sqlite3
-import threading
-import time
 from typing import Callable, Any
+import threading
+import sqlite3
+import time
 
 
 class StateDB:

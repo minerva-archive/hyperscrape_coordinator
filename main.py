@@ -1,27 +1,26 @@
-import asyncio
-import os
 from threading import Thread
 from uuid import uuid4
+import asyncio
+import os
 
-from fastapi.templating import Jinja2Templates
-import requests
-import urllib
-import uvicorn
-from websockets import InvalidUpgrade, ServerConnection
-from console import Console
-from files import HyperscrapeChunk
 from background_coordinator_thread import background_coordinator
-import state
+from fastapi.templating import Jinja2Templates
+from websockets import InvalidUpgrade
+from files import HyperscrapeChunk
+from console import Console
+import requests
+import uvicorn
 import hashlib
 import shutil
+import state
 
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
-from state_db import db
-from workers import Worker
-from ws_message import WSMessage, WSMessageType
 from fastapi import FastAPI, WebSocket, Request
+from ws_message import WSMessage, WSMessageType
 from fastapi.responses import HTMLResponse
+from workers import Worker
+from state_db import db
 
 print("=========================")
 print("=  HYPERSCRAPE SERVER   =")

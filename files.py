@@ -1,7 +1,6 @@
 from threading import Lock
-import time
-
 from state_db import db
+import time
 
 
 class WorkerStatus():

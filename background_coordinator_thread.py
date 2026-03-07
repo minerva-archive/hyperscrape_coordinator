@@ -1,6 +1,7 @@
 import state
 import time
 
+
 def background_coordinator():
     last_save_time = time.time()
     last_stat_calc_time = time.time()
