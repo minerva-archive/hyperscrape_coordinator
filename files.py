@@ -7,6 +7,7 @@ class WorkerStatus():
         self._uploaded: int = uploaded
         self._complete: bool = False
         self._hash: str|None = None
+        self._hash_only: bool = True # Whether this worker uploaded data that was ONLY hashed, by default we don't actually write downloaded data!
         self._lock: Lock = Lock()
 
     def __getstate__(self):
@@ -34,6 +35,12 @@ class WorkerStatus():
     def mark_complete(self, hash: str):
         self._hash = hash
         self._complete = True
+
+    def set_hash_only(self, hash_only: bool):
+        self._hash_only = hash_only
+
+    def get_hash_only(self):
+        return self._hash_only
 
     def get_hash(self):
         return self._hash
