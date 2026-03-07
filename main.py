@@ -199,7 +199,7 @@ def get_code(request: Request, code: str):
     return templates.TemplateResponse(
         request,
         "code.html",
-        context={
+        {
             "request": request,
             "code": access_token,
             "error": error
@@ -208,12 +208,12 @@ def get_code(request: Request, code: str):
     
 @app.get("/")
 def slash_index(request: Request):
-    return templates.TemplateResponse(request, "index.html", context={"request": request})
+    return templates.TemplateResponse(request, "index.html", {"request": request})
     
 # @FIXME: This is probably redundant
 @app.get("/index.html")
 def html_index(request: Request):
-    return templates.TemplateResponse(request, "index.html", context={"request": request})
+    return templates.TemplateResponse(request, "index.html", {"request": request})
 
 # Start the main app
 if __name__ == "__main__":
