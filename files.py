@@ -82,6 +82,7 @@ class HyperscrapeChunk():
     
     def add_worker_status(self, worker_id: str):
         self._worker_status[worker_id] = WorkerStatus()
+        db.insert_worker(self._chunk_id, worker_id)
 
     def has_worker(self, worker_id: str):
         return worker_id in self._worker_status
@@ -99,16 +100,22 @@ class HyperscrapeChunk():
         with self._worker_status[worker_id].get_lock():
             self._worker_status[worker_id].set_uploaded(uploaded)
             self._worker_status[worker_id].mark_updated()
+            db.set_worker_uploaded(self._chunk_id, worker_id, uploaded)
+            db.set_worker_last_updated(self._chunk_id, worker_id)
 
     def mark_worker_status_complete(self, worker_id: str, hash: str):
         with self._worker_status[worker_id].get_lock():
             self._worker_status[worker_id].mark_complete(hash)
             self._worker_status[worker_id].mark_updated()
+            db.set_worker_complete(self._chunk_id, worker_id)
+            db.set_worker_hash(self._chunk_id, worker_id, hash)
+            db.set_worker_last_updated(self._chunk_id, worker_id)
 
     def remove_worker_status(self, worker_id: str):
         if (worker_id in self._worker_status):
             with self._worker_status[worker_id].get_lock():
                 del self._worker_status[worker_id]
+                db.delete_worker(self._chunk_id, worker_id)
 
     def get_lock(self):
         return self._lock

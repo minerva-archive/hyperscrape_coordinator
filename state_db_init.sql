@@ -32,12 +32,13 @@ create table if not exists chunk
 create index if not exists chunk_file_id_index
     on chunk (file_id);
 
-create table if not exists worker_chunk
+create table if not exists worker
 (
     id           integer primary key,
     chunk_id     text    not null
-        constraint worker_chunk_chunk_id_fk
-            references chunk (id),
+        constraint worker_chunk_id_fk
+            references chunk (id)
+            on delete cascade,
     worker_id    text    not null,
     last_updated integer not null,
     uploaded     integer not null default 0,
@@ -45,11 +46,11 @@ create table if not exists worker_chunk
     hash         text
 );
 
-create index if not exists worker_chunk_chunk_id_index
-    on worker_chunk (chunk_id);
+create index if not exists worker_chunk_id_index
+    on worker (chunk_id);
 
-create index if not exists worker_chunk_worker_id_index
-    on worker_chunk (worker_id);
+create index if not exists worker_worker_id_index
+    on worker (worker_id);
 
 create table if not exists file_hash
 (
