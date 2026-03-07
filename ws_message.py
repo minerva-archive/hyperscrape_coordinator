@@ -1,4 +1,8 @@
 class BetterStruct():
+    """!
+    @brief This is a lazy implementation of a struct-like format for WSMessage objects
+    """
+
     def __init__(self, buffer=None):
         self._buffer = buffer
         if (self._buffer == None):
@@ -62,7 +66,13 @@ class WSMessageType():
     ERROR_RESPONSE=130
     OK_RESPONSE=131
 
+
+
 class WSMessage():
+    """!
+    @brief The WSMessage object represents a message over the websocket to/from a worker
+    """
+
     def __init__(self, type: int, payload: dict):
         self._type = type
         self._payload = payload
@@ -74,6 +84,11 @@ class WSMessage():
         return self._payload
     
     def encode(self) -> bytes:
+        """!
+        @brief Convert this message into a bytes object to be sent over the websocket
+
+        @return (bytes): The message encoded as bytes
+        """
         encoded = BetterStruct()
         encoded.add_byte(self._type)
         if (self._type == WSMessageType.REGISTER):
@@ -105,7 +120,14 @@ class WSMessage():
                 encoded.add_string(self._payload[key])
         return encoded.get_buffer()
     
-    def decode(encoded: bytes):
+    def decode(encoded: bytes) -> WSMessage:
+        """!
+        @brief Decode bytes from a message into a WSMessage object
+
+        @param encoded (bytes): The message as a bytes object
+
+        @return (WSMessage): The message object parse from the bytes
+        """
         struct = BetterStruct(encoded)
         type = struct.get_byte()
         payload = {}

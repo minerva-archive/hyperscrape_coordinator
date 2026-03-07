@@ -1,10 +1,13 @@
 from typing import Callable, Any
 import threading
 import sqlite3
-import time
-
 
 class StateDB:
+    """!
+    @brief The state's database storage system
+    """
+
+
     def __init__(self, db_path: str):
         self._db_path = db_path
 
@@ -18,6 +21,7 @@ class StateDB:
         self._configure(self._write_conn)
         self._initialize_db()
 
+
     @property
     def _conn(self):
         # reading conn for each thread
@@ -25,6 +29,7 @@ class StateDB:
             self._local.conn = sqlite3.connect(self._db_path)
             self._configure(self._local.conn)
         return self._local.conn
+
 
     @staticmethod
     def _configure(conn: sqlite3.Connection):
@@ -35,16 +40,19 @@ class StateDB:
         conn.execute("PRAGMA journal_size_limit = 6144000")
         conn.row_factory = sqlite3.Row
 
+
     def _write(self, fn: Callable[[sqlite3.Connection], Any]):
         with self._write_lock:
             with self._write_conn:
                 return fn(self._write_conn)
+
 
     def _initialize_db(self):
         # you wouldn't want to do bad things here
         with open("state_db_init.sql") as f:
             with self._write_conn:
                 self._write_conn.executescript(f.read())
+
 
     # now comes business logic
 
@@ -55,30 +63,36 @@ class StateDB:
             cur = self._conn.execute("SELECT * FROM file")
             return cur.fetchall()
 
+
     def get_chunks(self) -> list[dict]:
         with self._conn:
             cur = self._conn.execute("SELECT * FROM chunk")
             return cur.fetchall()
+
 
     def get_chunks_for_file(self, file_id: str) -> list[dict]:
         with self._conn:
             cur = self._conn.execute("SELECT * FROM chunk WHERE file_id = ?", (file_id,))
             return cur.fetchall()
 
+
     def get_chunk_worker_status(self, chunk_id: str) -> list[dict]:
         with self._conn:
             cur = self._conn.execute("SELECT * FROM worker_status WHERE chunk_id = ?", (chunk_id,))
             return cur.fetchall()
+
 
     def get_file_hashes(self):
         with self._conn:
             cur = self._conn.execute("SELECT path, md5, sha1, sha256 FROM file_hash JOIN file on file.id = file_hash.file_id")
             return cur.fetchall()
 
+
     def get_leaderboard(self):
         with self._conn:
             cur = self._conn.execute("SELECT * FROM leaderboard ORDER BY downloaded_bytes DESC")
             return cur.fetchall()
+
 
     # file mutations
 
@@ -93,6 +107,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def set_file_size(self, file_id: str, size: int):
         def write(conn):
             with conn:
@@ -103,6 +118,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def set_file_chunk_size(self, file_id: str, chunk_size: int):
         def write(conn):
             with conn:
@@ -112,6 +128,7 @@ class StateDB:
                 )
                 return cur.fetchone()
         return self._write(write)
+
 
     def set_file_complete(self, file_id: str):
         def write(conn):
@@ -125,6 +142,7 @@ class StateDB:
 
     # chunk / worker mutations
 
+
     def insert_chunk(self, chunk_id: str, file_id: str, start: int, end: int):
         def write(conn):
             with conn:
@@ -136,6 +154,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def delete_chunk(self, chunk_id: str):
         def write(conn):
             with conn:
@@ -145,6 +164,7 @@ class StateDB:
                 )
                 return cur.fetchone()
         return self._write(write)
+
 
     def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str = "", hash_only: bool = True):
         def write(conn):
@@ -157,6 +177,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def delete_worker_status(self, chunk_id: str, worker_id: str):
         def write(conn):
             with conn:
@@ -167,6 +188,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
     
+
     def delete_chunk_worker_status(self, chunk_id: str, worker_id: str):
         def write(conn):
             with conn:
@@ -176,6 +198,7 @@ class StateDB:
                 )
                 return cur.fetchone()
         return self._write(write)
+
 
     def set_worker_status_uploaded(self, chunk_id: str, worker_id: str, uploaded: int):
         def write(conn):
@@ -187,6 +210,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def set_worker_status_hash(self, chunk_id: str, worker_id: str, hash: str):
         def write(conn):
             with conn:
@@ -197,6 +221,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
     
+
     def set_worker_status_hash_only(self, chunk_id: str, worker_id: str, hash_only: bool):
         def write(conn):
             with conn:
@@ -206,6 +231,7 @@ class StateDB:
                 )
                 return cur.fetchone()
         return self._write(write)
+
 
     # file hash mutations
 
@@ -222,7 +248,13 @@ class StateDB:
 
     # leaderboard mutations
 
-    def insert_leaderboard_entry(self, discord_id: str, discord_username: str, avatar_url: str, downloaded_chunks: int = 0, downloaded_bytes: int = 0):
+    def insert_leaderboard_entry(self,
+                                 discord_id: str,
+                                 discord_username: str,
+                                 avatar_url: str,
+                                 downloaded_chunks: int = 0,
+                                 downloaded_bytes: int = 0):
+        
         def write(conn):
             with conn:
                 cur = conn.execute(
@@ -234,6 +266,7 @@ class StateDB:
                 return cur.fetchone()
         return self._write(write)
 
+
     def update_leaderboard_downloaded_bytes(self, discord_id: str, change: int):
         def write(conn):
             with conn:
@@ -243,6 +276,7 @@ class StateDB:
                 )
                 return cur.fetchone()
         return self._write(write)
+
 
     def update_leaderboard_downloaded_chunks(self, discord_id: str, change: int):
         def write(conn):

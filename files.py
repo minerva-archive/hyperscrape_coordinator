@@ -3,22 +3,37 @@ from state_db import db
 import time
 
 
+
 class WorkerStatus():
-    def __init__(self, uploaded: int = 0, hash: str|None = None, hash_only: bool = True, last_updated: int | None = None):
+    """!
+    @brief Represent the status of an individual worker downloading a chunk
+    """
+
+    def __init__(self,
+                 uploaded: int = 0,
+                 hash: str|None = None,
+                 hash_only: bool = True,
+                 last_updated: int | None = None):
+        
         if last_updated is None:
-            last_updated = time.time()
+            last_updated = time.time() # Default to now
         self._last_updated: int = last_updated
         self._uploaded: int = uploaded
         self._hash: str|None = hash
         self._hash_only: bool = hash_only # Whether this worker uploaded data that was ONLY hashed, by default we don't actually write downloaded data!
         self._lock: Lock = Lock()
 
-    
+
+
 ###
 # We store files and chunks separately because I like, hate myself
 # It's also more efficient
 ###
 class HyperscrapeChunk():
+    """!
+    @brief A single chunk
+    """
+
     def __init__(self, chunk_id: str, start: int, end: int, worker_status: dict[str, WorkerStatus] = None):
         if worker_status is None:
             worker_status = {}
@@ -74,7 +89,7 @@ class HyperscrapeChunk():
         return self._lock
     
     ###
-    # Worker status
+    # Worker status access
     ###
     def get_worker_last_updated(self, worker_id: str):
         return self._worker_status[worker_id]._last_updated
@@ -112,7 +127,19 @@ class HyperscrapeChunk():
 
 
 class HyperscrapeFile():
-    def __init__(self, file_id: str, file_path: str, total_size: int|None, url: str, chunk_size: int, chunks: set[str] = None, complete: bool = False):
+    """!
+    @brief A single file
+    """
+
+    def __init__(self,
+                 file_id: str,
+                 file_path: str,
+                 total_size: int|None,
+                 url: str,
+                 chunk_size: int,
+                 chunks: set[str] = None,
+                 complete: bool = False):
+        
         if chunks is None:
             chunks = set()
         self._lock: Lock = Lock()

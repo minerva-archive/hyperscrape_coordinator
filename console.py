@@ -6,6 +6,10 @@ import os
 
 
 class Console():
+    """!
+    @brief Console class handles the interactive console spawned by the coordinator when it runs
+    """
+    
     def __init__(self):
         self._should_run = True
         self._thread = Thread(target=self.main_thread)
@@ -49,15 +53,22 @@ class Console():
 
     def list_downloadable(self, argv):
         print("Downloadable Files:")
-        self.dynamic_list(state.sorted_downloadable_files, displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].get_path()})")
+        self.dynamic_list(
+            state.sorted_downloadable_files,
+            displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].get_path()})"
+        )
 
     def list_workers(self, argv):
         print("Workers:")
-        self.dynamic_list(list(state.workers.keys()), displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)")
+        self.dynamic_list(
+            list(state.workers.keys()),
+            displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)")
 
     def list_files(self, argv):
         print("Files (path, complete):")
-        self.dynamic_list(list(state.files.keys()), displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})")
+        self.dynamic_list(
+            list(state.files.keys()),
+            displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})")
     
     def get_file(self, argv):
         file_id = argv[1]
@@ -67,7 +78,9 @@ class Console():
         print(f"Size: {file.get_total_size()}")
         print(f"URL: {file.get_url()}")
         print(f"Chunks for {file_id}:")
-        self.dynamic_list(file.get_chunks(), displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})")
+        self.dynamic_list(
+            file.get_chunks(),
+            displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})")
 
     def get_chunk(self, argv):
         chunk = state.chunks[argv[1]]
@@ -78,6 +91,7 @@ class Console():
             print(f"- {worker_id} U: {chunk.get_worker_uploaded(worker_id)}\tH: {chunk.get_worker_hash(worker_id)}\tC: {chunk.get_worker_complete(worker_id)}\tLU: {round(time.time() - chunk.get_worker_last_updated(worker_id), 2)}s ago")
 
     def dynamic_list(self, list: list[object], displayFunction: Callable[[int, object], str]):
+        # @TODO: This is a bit broken but it functions fine
         list_index = 0
         list_size = 10
         while True:

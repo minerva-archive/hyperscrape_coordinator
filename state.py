@@ -1,5 +1,5 @@
 ###
-# State vars
+# Global state vars
 ###
 from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
 from collections import defaultdict
@@ -69,7 +69,13 @@ total_bytes = 0
 current_speed = 0
 
 class LeaderboardObject():
-    def __init__(self, discord_id: str, discord_username: str, avatar_url: str, downloaded_chunks: int = 0, downloaded_bytes: int = 0):
+    def __init__(self,
+                 discord_id: str,
+                 discord_username: str,
+                 avatar_url: str,
+                 downloaded_chunks: int = 0,
+                 downloaded_bytes: int = 0):
+        
         self._discord_id = discord_id
         self._discord_username = discord_username
         self._avatar_url = avatar_url
@@ -110,12 +116,18 @@ current_leaderboard_lock = Lock()
 ###
 ###
 
+
 def update_stats_bytes(discord_id: str, byte_count: int):
     current_leaderboard[discord_id].update_downloaded_bytes(byte_count)
+
 
 def update_stats_chunks(discord_id: str, chunk_count: int):
     current_leaderboard[discord_id].update_downloaded_chunks(chunk_count)
    
+
+###
+# Config + Secrets loading
+###
 global config
 config = None
 with open("./config.toml", 'rb') as file:
@@ -132,15 +144,27 @@ with open("./secrets.toml", 'rb') as file:
 # State helpers
 ###
 # Files
-def add_file(file: HyperscrapeFile, defer_save: bool = False):
+def add_file(file: HyperscrapeFile) -> None:
+    """!
+    @brief Adds a file to the current state storing files
+
+    @param file (HyperscrapeFile): The file to add
+    """
+
     with files_lock:
         files[file.get_id()] = file
         file_worker_counts[file.get_id()] = 0
         sorted_downloadable_files.append(file.get_id())
         db.insert_file(file.get_id(), file.get_path(), file.get_total_size(), file.get_url(), file.get_chunk_size())
 
+
 # Workers
-async def remove_worker(worker_id: str):
+async def remove_worker(worker_id: str) -> None:
+    """!
+    @brief Remove and disconnect a worker from the coordinator
+
+    @param worker_id (str): The ID of the worker to remove
+    """
     global assigned_chunks
     global workers_lock
     global workers
@@ -149,9 +173,9 @@ async def remove_worker(worker_id: str):
         if (worker_id in workers):
             with workers[worker_id].get_lock():
                 try:
-                    workers[worker_id].get_websocket().close() # @TODO - Fix this
+                    await workers[worker_id].get_websocket().close() # @TODO - Fix this
                 except:
-                    pass
+                    pass # This may fail and that's okay
                 for chunk_id in list(workers[worker_id].get_file_handles().keys()):
                     workers[worker_id].close_file_handle(chunk_id)
                     os.remove(workers[worker_id].get_file_path(chunk_id)) # Delete our partials
@@ -160,7 +184,10 @@ async def remove_worker(worker_id: str):
                     assigned_chunks -= 1
                 del workers[worker_id] # Delete the worker
 
+
+###
 # IP banning
+###
 def write_banned_ips():
     with open("./banned_ips.json", 'wb') as file:
         file.write(json.encode(banned_ips))
@@ -177,15 +204,25 @@ def unban_ip(ip: str):
         banned_ips.remove(ip)
         write_banned_ips()
 
+
 ###
 # Chunks
-def cleanup_chunk_workers(chunk_id: str):
+###
+def cleanup_chunk_workers(chunk_id: str) -> None:
+    """!
+    @brief Given a chunk, removes stale workers from it and deletes their data
+
+    @param chunk_id (str): The chunk to remove stale workers from
+    """
     chunk = chunks[chunk_id]
     with chunk.get_lock():
         for worker_id in list(chunk.get_workers()):
             if (
-                (not worker_id in workers) or
-                ((not chunk.get_worker_complete(worker_id)) and time.time() - chunk.get_worker_last_updated(worker_id) > config["general"]["worker_timeout"])
+                not chunk.get_worker_complete(worker_id) and # Only remove incomplete chunks
+                (
+                    (not worker_id in workers) or # If the worker is no longer present
+                    time.time() - chunk.get_worker_last_updated(worker_id) > config["general"]["worker_timeout"] # Or it timed out
+                )
             ):
                 # Cleanup worker info
                 if (worker_id in workers):
@@ -198,6 +235,10 @@ def cleanup_chunk_workers(chunk_id: str):
                 chunk.remove_worker_status(worker_id)
 
 def load_state_from_db():
+    """!
+    @brief This loads the global state from the database
+    """
+
     global files
     global chunks
     global current_leaderboard
@@ -258,6 +299,9 @@ def load_state_from_db():
         )
 
 def load_state():
+    """!
+    @brief This loads the state from the db and sets up the stats objects
+    """
     global files_lock
     global files
     global chunks_lock
@@ -279,6 +323,7 @@ def load_state():
         for file_id in files:
             file = files[file_id]
             total_bytes += file.get_total_size() * config["general"]["trust_count"]
+
             if (file.get_complete()):
                 completed_files += 1
                 completed_bytes += file.get_total_size() * config["general"]["trust_count"]
@@ -286,6 +331,7 @@ def load_state():
             else:
                 file_worker_counts[file_id] = 0
                 sorted_downloadable_files.append(file_id)
+
                 for chunk_id in file.get_chunks():
                     for worker_id in chunks[chunk_id].get_workers():
                         file_worker_counts[file_id] += 1

@@ -5,6 +5,10 @@ import time
 from fastapi import WebSocket
 
 class Worker():
+    """!
+    @brief Represents a client and its connection to the coordinator
+    """
+    
     def __init__(self, worker_id: str, ip: str, max_concurrent: int, discord_id: str|None):
         self._file_handles: dict[str, FileIO] = {} # File handles for each chunk this worker is uploading
         self._file_paths: dict[str, str] = {} # File paths for each chunk this worker is uploading
