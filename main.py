@@ -197,7 +197,6 @@ def get_code(request: Request, code: str):
 
     # Return it to the user
     return templates.TemplateResponse(
-        request,
         "code.html",
         {
             "request": request,
@@ -208,12 +207,12 @@ def get_code(request: Request, code: str):
     
 @app.get("/")
 def slash_index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
     
 # @FIXME: This is probably redundant
 @app.get("/index.html")
 def html_index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
 
 # Start the main app
 if __name__ == "__main__":
