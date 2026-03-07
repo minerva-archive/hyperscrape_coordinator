@@ -330,6 +330,7 @@ def load_state():
 
             # Regenerate chunks as needed
             if (len(file.get_chunks()) == 0):
+                print(f"Generating chunks for {file_id}...")
                 current_size = 0
                 with chunks_lock:
                     while current_size < file.get_total_size():
