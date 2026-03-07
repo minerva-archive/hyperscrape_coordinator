@@ -80,7 +80,8 @@ async def handler(websocket: WebSocket, ip_address: str):
             return # Unclear what causes this, it's not our problem though
         except WebSocketDisconnect:
             # If the websocket disconnects under normal circumstances
-            await state.remove_worker(worker.get_id())
+            if (worker):
+                await state.remove_worker(worker.get_id())
             return
         except Exception as e:
             if (worker):
@@ -220,4 +221,4 @@ def html_index(request: Request):
 # Start the main app
 if __name__ == "__main__":
     console.start()
-    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
+    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=128)
