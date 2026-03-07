@@ -79,11 +79,13 @@ async def handler(websocket: WebSocket, ip_address: str):
         except WebSocketDisconnect:
             # If the websocket disconnects under normal circumstances
             await state.remove_worker(worker.get_id())
+            return
         except Exception as e:
             if (worker):
                 print(f"Disconnecting worker {worker.get_id()} due to exception.")
                 print(e)
                 await state.remove_worker(worker.get_id())
+                return
 
 
 # Background thread for occasional tasks

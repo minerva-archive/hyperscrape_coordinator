@@ -107,6 +107,9 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
             has_worker_ip = False # We ensure the same IP isn't assigned the same file!
             with state.workers_lock:
                 for worker_id in state.chunks[chunk_id].get_workers():
+                    # Chunk statuses may contain completed worker chunk instances from workers that are NO LONGER connected
+                    if (not worker_id in state.workers):
+                        continue
                     if (state.workers[worker_id].get_ip() == worker.get_ip()):
                         has_worker_ip = True # Another worker on the same IP has this file, don't assign it
                         break
@@ -133,7 +136,7 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
                 highest_chunk_id = chunk_id
         if (highest_chunk_id != None):
             # If the free space is less than the chunk, we don't assign this chunk
-            chunk_size = state.chunks[highest_chunk_id].get_start() - state.chunks[highest_chunk_id].get_end()
+            chunk_size = state.chunks[highest_chunk_id].get_end() - state.chunks[highest_chunk_id].get_start()
             free -= state.assigned_chunks * chunk_size
             if (free <= chunk_size): 
                 continue

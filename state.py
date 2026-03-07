@@ -1,7 +1,7 @@
 ###
 # Global state vars
 ###
-import tqdm
+from tqdm import tqdm
 from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
 from collections import defaultdict
 from threading import Lock
