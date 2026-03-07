@@ -117,59 +117,7 @@ def update_stats_bytes(discord_id: str, byte_count: int):
 
 def update_stats_chunks(discord_id: str, chunk_count: int):
     current_leaderboard[discord_id].update_downloaded_chunks(chunk_count)
-    
-###
-# State Files
-def save_file_state():
-    with files_lock:
-        with open("./file_state.bin.temp", 'wb') as file:
-            pickle.dump(files, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-def save_chunk_state():
-    with chunks_lock:
-        with open("./chunk_state.bin.temp", 'wb') as file:
-            pickle.dump(chunks, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-def save_file_hashes():
-    with hashes_lock:
-        with open("./file_hashes.bin.temp", 'wb') as file:
-            pickle.dump(file_hashes, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-def save_leaderboard_state():
-    with current_leaderboard_lock:
-        with open("./leaderboard.bin.temp", "wb") as file:
-            pickle.dump(current_leaderboard, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-def save_data_files():
-    # for now just short circuit this to avoid changing too many places
-    return
-    save_chunk_state()
-    save_file_state()
-    save_file_hashes()
-    save_leaderboard_state()
-    try:
-        os.replace("./file_state.bin", "./file_state.bin.bck")
-    except:
-        pass
-    try:
-        os.replace("./chunk_state.bin", "./chunk_state.bin.bck")
-    except:
-        pass
-    try:
-        os.replace("./file_hashes.bin", "./file_hashes.bin.bck")
-    except:
-        pass
-    try:
-        os.replace("./leaderboard.bin", "./leaderboard.bin.bck")
-    except:
-        pass
-    # Only once ALL state files are fully written, do we write them
-    os.replace("./file_state.bin.temp", "./file_state.bin")
-    os.replace("./chunk_state.bin.temp", "./chunk_state.bin")
-    os.replace("./file_hashes.bin.temp", "./file_hashes.bin")
-    os.replace("./leaderboard.bin.temp", "./leaderboard.bin")
-###
-
+   
 global config
 config = None
 with open("./config.toml", 'rb') as file:
@@ -191,19 +139,7 @@ def add_file(file: HyperscrapeFile, defer_save: bool = False):
         files[file.get_id()] = file
         file_worker_counts[file.get_id()] = 0
         sorted_downloadable_files.append(file.get_id())
-    if (not defer_save):
-        save_data_files()
-
-# File data structure helpers
-def reorder_file_workers(file_id):
-    i = 0
-    while (sorted_downloadable_files[i] != file_id):
-        i += 1 # Get to the current file
-    sorted_downloadable_files.pop(i) # Remove it
-    i = 0
-    while (i < len(sorted_downloadable_files)) and file_worker_counts[file_id] < file_worker_counts[sorted_downloadable_files[i]]: # Keep going whilst the current file worker count is less (this gurantees a descending-order list)
-        i += 1 # Find the new insertion point
-    sorted_downloadable_files.insert(i, file_id)
+        db.insert_file(file.get_id(), file.get_path(), file.get_total_size(), file.get_url(), file.get_chunk_size())
 
 # Workers
 def remove_worker(worker_id: str):
@@ -280,15 +216,14 @@ def load_state_from_db():
     # rebuild chunks from db
     db_chunks = db.get_chunks()
     for db_chunk in db_chunks:
-        db_workers = db.get_workers_for_chunk(db_chunk["id"])
+        db_worker_statuses = db.get_chunk_worker_status(db_chunk["id"])
         worker_status: dict[str, WorkerStatus] = {}
-        for db_worker in db_workers:
-            worker_status[db_worker["worker_id"]] = WorkerStatus(
-                0,  # downloaded
-                db_worker["uploaded"],
-                bool(db_worker["complete"]),
-                db_worker["hash"],
-                db_worker["last_updated"],
+        for db_worker_status in db_worker_statuses:
+            worker_status[db_worker_status["worker_id"]] = WorkerStatus(
+                db_worker_status["uploaded"],
+                db_worker_status["hash"],
+                db_worker_status["hash_only"],
+                db_worker_status["last_updated"],
             )
         chunk = HyperscrapeChunk(
             db_chunk["id"],
@@ -332,7 +267,7 @@ def load_state_from_db():
             db_entry["downloaded_bytes"],
         )
 
-def load_files():
+def load_state():
     global files_lock
     global files
     global file_hashes
@@ -374,5 +309,4 @@ def load_files():
     except Exception as e:
         print("NOTE: Could not load previous file state:")
         print(e)
-        save_data_files()
-load_files()
+load_state()

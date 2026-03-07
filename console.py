@@ -48,7 +48,7 @@ class Console():
             print(f"{command}\t-\t{self._commands[command][1]}")
 
     def reload_files(self, argv):
-        state.load_files()
+        state.load_state()
 
     def list_downloadable(self, argv):
         print("Downloadable Files:")

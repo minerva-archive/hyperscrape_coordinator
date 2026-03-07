@@ -26,10 +26,10 @@ CREATE TABLE IF NOT EXISTS worker_status
 (
     chunk_id        TEXT        NOT NULL,
     worker_id       TEXT        NOT NULL,
-    last_updated    INTEGER     NOT NULL,
     uploaded        INTEGER     NOT NULL,
     hash            TEXT,                   -- Can be null
     hash_only       INTEGER     NOT NULL,
+    last_updated    INTEGER     NOT NULL,
     PRIMARY KEY (chunk_id, worker_id)
 )
 

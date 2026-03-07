@@ -5,14 +5,13 @@ from state_db import db
 
 
 class WorkerStatus():
-    def __init__(self, downloaded: int = 0, uploaded: int = 0, complete: bool = False, hash: str|None = None, last_updated: int | None = None):
+    def __init__(self, uploaded: int = 0, hash: str|None = None, hash_only: bool = True, last_updated: int | None = None):
         if last_updated is None:
             last_updated = time.time()
         self._last_updated: int = last_updated
         self._uploaded: int = uploaded
-        self._complete: bool = complete
         self._hash: str|None = hash
-        self._hash_only: bool = True # Whether this worker uploaded data that was ONLY hashed, by default we don't actually write downloaded data!
+        self._hash_only: bool = hash_only # Whether this worker uploaded data that was ONLY hashed, by default we don't actually write downloaded data!
         self._lock: Lock = Lock()
 
     def get_last_updated(self):
@@ -28,11 +27,10 @@ class WorkerStatus():
         self._uploaded = uploaed
     
     def get_complete(self):
-        return self._complete
+        return self._hash != None
     
     def mark_complete(self, hash: str):
         self._hash = hash
-        self._complete = True
 
     def set_hash_only(self, hash_only: bool):
         self._hash_only = hash_only
@@ -75,7 +73,7 @@ class HyperscrapeChunk():
     
     def add_worker_status(self, worker_id: str):
         self._worker_status[worker_id] = WorkerStatus()
-        db.insert_worker(self._chunk_id, worker_id)
+        db.insert_worker_status(self._chunk_id, worker_id)
 
     def has_worker(self, worker_id: str):
         return worker_id in self._worker_status
@@ -93,18 +91,20 @@ class HyperscrapeChunk():
         with self._worker_status[worker_id].get_lock():
             self._worker_status[worker_id].set_uploaded(uploaded)
             self._worker_status[worker_id].mark_updated()
+            db.mark_worker_status_updated(self._chunk_id)
 
     def mark_worker_status_complete(self, worker_id: str, hash: str):
         with self._worker_status[worker_id].get_lock():
             self._worker_status[worker_id].mark_complete(hash)
             self._worker_status[worker_id].mark_updated()
-            db.set_worker_complete(self._chunk_id, worker_id, hash)
+            db.set_worker_status_hash(self._chunk_id, worker_id, hash)
+            db.mark_worker_status_updated(self._chunk_id) # @TODO: Single query?
 
     def remove_worker_status(self, worker_id: str):
         if (worker_id in self._worker_status):
             with self._worker_status[worker_id].get_lock():
                 del self._worker_status[worker_id]
-                db.delete_worker(self._chunk_id, worker_id)
+                db.delete_worker_status(self._chunk_id, worker_id)
 
     def get_lock(self):
         return self._lock
