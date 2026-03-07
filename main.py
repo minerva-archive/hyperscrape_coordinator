@@ -221,4 +221,4 @@ def html_index(request: Request):
 # Start the main app
 if __name__ == "__main__":
     console.start()
-    uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=128)
+    uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
