@@ -213,3 +213,4 @@ staging
 secrets.toml
 mnt
 state.db*
+config.toml

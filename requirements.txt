@@ -1,6 +1,5 @@
-flask
-waitress
-websockets
 msgspec
-gevent
 requests
+fastapi[standard]
+websockets
+jinja2

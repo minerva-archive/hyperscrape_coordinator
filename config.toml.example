@@ -1,0 +1,18 @@
+[server]
+port = 8080
+
+[server.http] # For API and code server
+port = 8081 # The port for the api and code server
+threads = 16
+backlog = 96
+[general]
+version = 4 # The coordinator version
+
+worker_timeout = 300 # Disconect workers if they're idle for 10 minutes
+
+# @TODO: DEBUGGING ONLY SET THIS TO 3 OR MORE
+trust_count = 2 # How many workers need to download the same chunk before we trust that it is accurate (obviouly a higher number slows down the ov>
+
+[paths]
+chunk_temp_path = "/opt/temp/"
+storage_path = "/mnt/cephfs/hyperscrape/"

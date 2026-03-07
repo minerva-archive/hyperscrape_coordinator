@@ -43,7 +43,8 @@ class Worker():
         self._file_paths[chunk_id] = file_path
 
     def remove_file_path(self, chunk_id: str):
-        del self._file_paths[chunk_id]
+        if (chunk_id in self._file_paths):
+            del self._file_paths[chunk_id]
     
     def check_file_path(self, chunk_id: str):
         return self._file_paths[chunk_id]

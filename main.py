@@ -1,11 +1,13 @@
 import asyncio
-from io import FileIO
 import os
 from threading import Thread
 from uuid import uuid4
 
+from fastapi.templating import Jinja2Templates
 import requests
-from websockets import ConnectionClosedError, ConnectionClosedOK, InvalidUpgrade, ServerConnection
+import urllib
+import uvicorn
+from websockets import InvalidUpgrade, ServerConnection
 from console import Console
 from files import HyperscrapeChunk
 from background_coordinator_thread import background_coordinator
@@ -15,20 +17,11 @@ import shutil
 
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
-import argparse
-
 from state_db import db
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
-from websockets.asyncio.server import serve
-
-
-parser = argparse.ArgumentParser(
-                    prog='Hyperscrape Coordinator',
-                    description='',
-                    epilog='Created by Hackerdude for Minerva')
-parser.add_argument("-d", "--debug", help="Use Waitress", action="store_true")
-args = parser.parse_args()
+from fastapi import FastAPI, WebSocket, Request
+from fastapi.responses import HTMLResponse
 
 print("=========================")
 print("=  HYPERSCRAPE SERVER   =")
@@ -72,6 +65,7 @@ def register_worker(ip: str, data: dict):
     })
 
 def get_chunks(worker: Worker, data: dict):
+    total, used, free = shutil.disk_usage(state.config["paths"]["chunk_temp_path"]) # Get storage path stats
     num_chunks_to_get = int(data["count"])
     # Get files with high worker counts
     # So the entire network is working together for a single file essenially
@@ -127,6 +121,11 @@ def get_chunks(worker: Worker, data: dict):
             if (highest_chunk_id == None or state.chunks[chunk_id].get_worker_count() > state.chunks[highest_chunk_id].get_worker_count()):
                 highest_chunk_id = chunk_id
         if (highest_chunk_id != None):
+            # If the free space is less than the chunk, we don't assign this chunk
+            chunk_size = state.chunks[highest_chunk_id].get_start() - state.chunks[highest_chunk_id].get_end()
+            free -= state.assigned_chunks * chunk_size
+            if (free <= chunk_size): 
+                continue
             chunk_to_file[highest_chunk_id] = file_id
             chunks_to_download.append(highest_chunk_id)
 
@@ -139,9 +138,11 @@ def get_chunks(worker: Worker, data: dict):
         file = state.files[chunk_to_file[chunk_id]]
         with state.chunks[chunk_id].get_lock():
             state.chunks[chunk_id].add_worker_status(worker.get_id())
+            if (state.chunks[chunk_id].get_worker_count() == state.config["general"]["trust_count"]):
+                state.chunks[chunk_id].get_worker_status(worker.get_id()).set_hash_only(False)
         response[chunk_id] = {
             "file_id": chunk_to_file[chunk_id],
-            "url": file.get_url(),
+            "url": file.get_url().replace('#', '%23'), # Fix URLs, hackish
             "range": [
                 chunk.get_start(),
                 chunk.get_end()
@@ -175,32 +176,44 @@ def upload_chunk(worker: Worker, data: dict):
     chunk_file_object = state.files[file_id]
     if (not chunk_file_object.has_chunk(chunk_id)):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unknown file", "chunk_id": chunk_id})
+    hash_only = chunk.get_worker_status(worker.get_id()).get_hash_only()
+    
     temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.get_path())
-    # Check if a handle exits for this chunk
     chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker.get_id())
+
+    # Check if a handle exits for this chunk
     if (not chunk_id in worker.get_file_handles()):
-        os.makedirs(os.path.dirname(chunk_path), exist_ok=True)
-        worker.set_file_handle(chunk_id, open(chunk_path + ".partial", 'wb'))
-        worker.set_file_path(chunk_id, chunk_path + ".partial")
+        # We only actually download a chunk if we are the last chunk!
+        if (not hash_only):
+            os.makedirs(os.path.dirname(chunk_path), exist_ok=True) # Create new handle otherwise
+            worker.set_file_handle(chunk_id, open(chunk_path + ".partial", 'wb'))
+            worker.set_file_path(chunk_id, chunk_path + ".partial")
         worker.set_chunk_hash(chunk_id, hashlib.md5())
     
-    worker.get_file_handle(chunk_id).write(data["payload"])
-    worker.get_file_handle(chunk_id).flush()
+    if (not hash_only):
+        worker.get_file_handle(chunk_id).write(data["payload"])
+        worker.get_file_handle(chunk_id).flush()
     worker.get_chunk_hash(chunk_id).update(data["payload"])
     if (worker.get_discord_id()):
         state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
     state.downloaded_bytes += len(data["payload"])
+    
+    if (not hash_only):
+        # We prefer this for more robust upload detection
+        chunk.update_worker_status_uploaded(worker.get_id(), worker.get_file_handle(chunk_id).tell())
+    else:
+        chunk.update_worker_status_uploaded(worker.get_id(), len(data["payload"]))
     del data["payload"] # Try to reduce memory consumption
-    chunk.update_worker_status_uploaded(worker.get_id(), worker.get_file_handle(chunk_id).tell())
 
-    if (worker.get_file_handle(chunk_id).tell() != chunk.get_end() - chunk.get_start()):
+    if (chunk.get_worker_status(worker.get_id()).get_uploaded() != chunk.get_end() - chunk.get_start()):
         return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received", "chunk_id": chunk_id}) # Chunk not yet finished
 
     chunk.mark_worker_status_complete(worker.get_id(), worker.get_chunk_hash(chunk_id).hexdigest()) # This chunk is now complete
-    worker.remove_chunk_hash(chunk_id)
-    worker.close_file_handle(chunk_id)
-    worker.remove_file_path(chunk_id)
-    os.replace(chunk_path + ".partial", chunk_path)
+    if (not hash_only):
+        worker.close_file_handle(chunk_id)
+        worker.remove_file_path(chunk_id)
+        os.replace(chunk_path + ".partial", chunk_path)
+    worker.remove_chunk_hash(chunk_id) # We have stored the hexdigest - we no longer need this
     state.assigned_chunks -= 1
     state.completed_chunks += 1
     if (worker.get_discord_id()):
@@ -221,10 +234,11 @@ def upload_chunk(worker: Worker, data: dict):
                 worker_status = chunk.get_worker_status(worker_id)
                 if (not worker_status.get_complete()):
                     continue
+                if (not chunk.get_worker_status(worker_id).get_hash_only()):
+                    os.remove(get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)) # Remove the chunk this worker downloaded
                 chunk.remove_worker_status(worker_id)
                 state.failed_chunks += 1
                 state.assigned_chunks -= 1
-                os.remove(get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)) # Remove the chunk this worker downloaded
             return WSMessage(WSMessageType.OK_RESPONSE, {"result": "Upload had a mismatched hash, you can ignore this", "chunk_id": chunk_id}) # We've processed the upload from the client, don't come back regardless of what happened
         
         # If the hashes weren't mismatched...
@@ -239,12 +253,13 @@ def upload_chunk(worker: Worker, data: dict):
         # AND we have responses that are complete for every response for this chunk?
         # We can remove the other chunks and just keep ours
         # Only if it hasn't already been done...
+        chunk_path = None # Store the obtained chunk path
         if (not os.path.exists(get_chunk_path(chunk_file_object.get_id(), chunk_id))):
             worker_ids = list(chunk.get_workers())
-            for worker_id in worker_ids: # Delete all...
-                if (worker_id == worker.get_id()): # Except ours!
-                    continue
-                os.remove(get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id))
+            for worker_id in worker_ids: # Find the worker that actually uploaded the chunk
+                if (not chunk.get_worker_status(worker_id).get_hash_only()):
+                    chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)
+                    break
             os.replace(chunk_path, get_chunk_path(chunk_file_object.get_id(), chunk_id))
 
     # Check if all the other chunks are also completed
@@ -337,20 +352,20 @@ def detach_chunk(worker: Worker, data: dict):
             state.assigned_chunks -= 1
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})
 
-async def handler(websocket: ServerConnection):
+async def handler(websocket: WebSocket, ip_address: str):
     worker: Worker = None
     while True:
         if (state.shutting_down):
             try:
-                websocket.send(WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Server is shutting down!"}))
+                websocket.send_bytes(WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Server is shutting down!"}).encode())
                 websocket.close()
             except:
                 pass
             return
         try:
-            data = await asyncio.wait_for(websocket.recv(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
+            data = await asyncio.wait_for(websocket.receive_bytes(), timeout=state.config["general"]["worker_timeout"]) # Timeout a worker after 10 minutes
             if data[:3] == b'\x00\x80\x05': # If we receive a legacy pickled request, send a legacy pickled resopnse with an error
-                await websocket.send(b'\x00\x80\x05\x95G\x00\x00\x00\x00\x00\x00\x00}\x94\x8c\x05error\x94\x8c8Your worker is using a legacy protocol - PLEASE UPGRADE!\x94s.')
+                await websocket.send_bytes(b'\x00\x80\x05\x95G\x00\x00\x00\x00\x00\x00\x00}\x94\x8c\x05error\x94\x8c8Your worker is using a legacy protocol - PLEASE UPGRADE!\x94s.')
                 await websocket.close()
                 if (worker):
                     state.remove_worker(worker.get_id())
@@ -358,24 +373,24 @@ async def handler(websocket: ServerConnection):
             message: WSMessage = WSMessage.decode(data)
             response = WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Message failure!"})
             if (message.get_type() == WSMessageType.REGISTER):
-                response = register_worker(websocket.request.headers.get("x-forwarded-for"), message.get_payload())
+                response = register_worker(ip_address, message.get_payload())
                 if (not response.get_payload().get("worker_id", None)):
-                    await websocket.send(response.encode())
+                    await websocket.send_bytes(response.encode())
                     await websocket.close()
                     raise Exception("Bad worker register message")
                 worker = state.workers[response.get_payload()["worker_id"]]
                 worker.set_websocket(websocket)
             elif (message.get_type() == WSMessageType.GET_CHUNKS):
-                response = get_chunks(worker, message.get_payload())
+                response = await asyncio.to_thread(get_chunks, worker, message.get_payload())
             elif (message.get_type() == WSMessageType.UPLOAD_SUBCHUNK):
-                response = upload_chunk(worker, message.get_payload())
+                response = await asyncio.to_thread(upload_chunk, worker, message.get_payload())
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
-                response = detach_chunk(worker, message.get_payload())
-            await websocket.send(response.encode())
+                response = await asyncio.to_thread(detach_chunk, worker, message.get_payload())
+            await websocket.send_bytes(response.encode())
         except InvalidUpgrade:
             return # What even causes this lol
         except Exception as e:
-            print(e)
+            print(repr(e))
             if (worker):
                 print(f"Disconnecting worker {worker.get_id()} due to error.")
                 state.remove_worker(worker.get_id())
@@ -390,13 +405,87 @@ gc_thread.start()
 
 console = Console()
 
-async def main():
-    async with serve(handler, "", state.config["server"]["port"], max_queue=128, ping_interval=60, ping_timeout=600) as server:
-        print(f"Listening on port {state.config["server"]["port"]}")
-        from web_api import start_web_api # Here to avoid patching our important stuff (i know what i said)
-        start_web_api()
-        console.start()
-        await server.serve_forever()
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+@app.websocket("/worker")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    ip = websocket.headers.get("x-forwarded-for", websocket.client.host)
+    await handler(websocket, ip)
+    try:
+        await websocket.close()
+    except:
+        pass
+
+@app.get("/api/stats")
+def get_stats():
+    total_files = len(state.files)
+    return {
+        "total_files": total_files,
+        "total_chunks": len(state.chunks),
+        "completed_files": state.completed_files,
+        "completed_chunks": state.completed_chunks,
+        "assigned": state.assigned_chunks,
+        "pending": total_files - state.completed_files,
+        "failed": state.failed_chunks,
+        "active_workers": len(state.workers),
+        "downloaded_bytes": state.downloaded_bytes,
+        "total_bytes": state.total_bytes,
+        "current_speed": state.current_speed
+    }
+
+
+@app.get("/api/leaderboard")
+def get_leaderboard(limit: int = 25, offset: int = 0):
+    response = []
+    for leaderboard_id in state.current_leaderboard_order[offset:limit]:
+        leaderboard_object = state.current_leaderboard[leaderboard_id]
+        response.append({
+            "discord_username": leaderboard_object.get_discord_username(),
+            "avatar_url": leaderboard_object.get_avatar_url(),
+            "downloaded_chunks": leaderboard_object.get_downloaded_chunks(),
+            "downloaded_bytes": leaderboard_object.get_downloaded_bytes()
+        })
+    return response
+
+@app.get("/code", response_class=HTMLResponse)
+def get_code(request: Request, code: str):
+    discord_code = code
+    API_ENDPOINT = 'https://discord.com/api/v10'
+    req_data = {
+        'grant_type': 'authorization_code',
+        'code': discord_code,
+        'redirect_uri': state.secrets["discord"]["redirect_uri"]
+    }
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    r = requests.post('%s/oauth2/token' % API_ENDPOINT, data=req_data, headers=headers, auth=(state.secrets["discord"]["client_id"], state.secrets["discord"]["client_secret"]))
+    error = None
+    access_token = None
+    if (r.status_code == 200):
+        access_token = r.json()["access_token"]
+    else:
+        error = "Could not load token"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="code.html",
+        context={
+            "code": access_token,
+            "error": error
+        }
+    )
+    
+@app.get("/")
+def slash_index(request: Request):
+    return templates.TemplateResponse(request=request, name="index.html")
+    
+@app.get("/index.html")
+def html_index(request: Request):
+    return templates.TemplateResponse(request=request, name="index.html")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    console.start()
+    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"])
