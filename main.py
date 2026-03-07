@@ -103,7 +103,7 @@ def get_chunks(worker: Worker, data: dict):
                     if (state.workers[worker_id].get_ip() == worker.get_ip()):
                         has_worker_ip = True
                         break
-            if (has_worker_ip or state.chunks[chunk_id].has_worker(worker.get_id()) and not state.chunks[chunk_id].get_worker_status(worker.get_id()).get_complete()):
+            if (has_worker_ip or state.chunks[chunk_id].has_worker(worker.get_id()) and not state.chunks[chunk_id].get_worker_complete(worker.get_id())):
                 downloading_file_already = True # If worker is CURRENTLY downloading this FILE then we skip the entire file
                 break
         
@@ -138,7 +138,7 @@ def get_chunks(worker: Worker, data: dict):
         with state.chunks[chunk_id].get_lock():
             state.chunks[chunk_id].add_worker_status(worker.get_id())
             if (state.chunks[chunk_id].get_worker_count() == state.config["general"]["trust_count"]):
-                state.chunks[chunk_id].get_worker_status(worker.get_id()).set_hash_only(False)
+                state.chunks[chunk_id].set_worker_hash_only(worker.get_id(), False)
         response[chunk_id] = {
             "file_id": chunk_to_file[chunk_id],
             "url": file.get_url().replace('#', '%23'), # Fix URLs, hackish
@@ -165,7 +165,7 @@ def upload_chunk(worker: Worker, data: dict):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unknown chunk", "chunk_id": chunk_id})
     if (not state.chunks[chunk_id].has_worker(worker.get_id())):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Chunk not requested", "chunk_id": chunk_id})
-    if (state.chunks[chunk_id].get_worker_status(worker.get_id()).get_complete()):
+    if (state.chunks[chunk_id].get_worker_complete(worker.get_id())):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Chunk already complete", "chunk_id": chunk_id})
     if (not file_id in state.files):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unknown file", "chunk_id": chunk_id})
@@ -175,7 +175,7 @@ def upload_chunk(worker: Worker, data: dict):
     chunk_file_object = state.files[file_id]
     if (not chunk_file_object.has_chunk(chunk_id)):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unknown file", "chunk_id": chunk_id})
-    hash_only = chunk.get_worker_status(worker.get_id()).get_hash_only()
+    hash_only = chunk.get_worker_hash_only(worker.get_id())
     
     temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.get_path())
     chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker.get_id())
@@ -204,7 +204,7 @@ def upload_chunk(worker: Worker, data: dict):
         chunk.update_worker_status_uploaded(worker.get_id(), len(data["payload"]))
     del data["payload"] # Try to reduce memory consumption
 
-    if (chunk.get_worker_status(worker.get_id()).get_uploaded() != chunk.get_end() - chunk.get_start()):
+    if (chunk.get_worker_uploaded(worker.get_id()) != chunk.get_end() - chunk.get_start()):
         return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received", "chunk_id": chunk_id}) # Chunk not yet finished
 
     chunk.mark_worker_status_complete(worker.get_id(), worker.get_chunk_hash(chunk_id).hexdigest()) # This chunk is now complete
@@ -222,18 +222,16 @@ def upload_chunk(worker: Worker, data: dict):
     with chunk.get_lock():
         chunk_hash_set = set()
         for worker_id in chunk.get_workers():
-            worker_status = chunk.get_worker_status(worker_id)
-            if (not worker_status.get_complete()):
+            if (not chunk.get_worker_complete(worker_id)):
                 continue
-            chunk_hash_set.add(worker_status.get_hash())
+            chunk_hash_set.add(chunk.get_worker_hash(worker_id))
 
         if (len(chunk_hash_set) > 1): # There are mismatched hashes!
             # We should re-download all the chunk instances we have if there is a mismatch
             for worker_id in list(chunk.get_workers()):
-                worker_status = chunk.get_worker_status(worker_id)
-                if (not worker_status.get_complete()):
+                if (not chunk.get_worker_complete(worker_id)):
                     continue
-                if (not chunk.get_worker_status(worker_id).get_hash_only()):
+                if (not chunk.get_worker_hash_only(worker_id)): # Technically this should never run, we'll see
                     os.remove(get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)) # Remove the chunk this worker downloaded
                 chunk.remove_worker_status(worker_id)
                 state.failed_chunks += 1
@@ -244,8 +242,7 @@ def upload_chunk(worker: Worker, data: dict):
         if (chunk.get_worker_count() < state.config["general"]["trust_count"]): # Check that we have all the chunks responses we need
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id})
         for worker_id in chunk.get_workers(): # Check that they're all complete
-            worker_status = chunk.get_worker_status(worker_id)
-            if (not worker_status.get_complete()):
+            if (not chunk.get_worker_complete(worker_id)):
                 return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id}) # If any of the workers aren't complete we just skip this
         
         # So all the hashes are good
@@ -256,7 +253,7 @@ def upload_chunk(worker: Worker, data: dict):
         if (not os.path.exists(get_chunk_path(chunk_file_object.get_id(), chunk_id))):
             worker_ids = list(chunk.get_workers())
             for worker_id in worker_ids: # Find the worker that actually uploaded the chunk
-                if (not chunk.get_worker_status(worker_id).get_hash_only()):
+                if (not chunk.get_worker_hash_only(worker_id)):
                     chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)
                     break
             os.replace(chunk_path, get_chunk_path(chunk_file_object.get_id(), chunk_id))
@@ -275,7 +272,7 @@ def upload_chunk(worker: Worker, data: dict):
                 file_complete = False # Chunk hasn't been downloaded yet
                 break
             for worker_id in state.chunks[chunk_id].get_workers():
-                if (not state.chunks[chunk_id].get_worker_status(worker_id).get_complete()):
+                if (not state.chunks[chunk_id].get_worker_complete(worker_id)):
                     file_complete = False # Chunk hasn't finished downloading yet
                     break
         

@@ -183,12 +183,12 @@ def cleanup_chunk_workers(chunk_id: str):
         for worker_id in list(chunk.get_workers()):
             if (
                 (not worker_id in workers) or
-                ((not chunk.get_worker_status(worker_id).get_complete()) and time.time() - chunk.get_worker_status(worker_id).get_last_updated() > config["general"]["worker_timeout"])
+                ((not chunk.get_worker_complete(worker_id)) and time.time() - chunk.get_worker_last_updated(worker_id) > config["general"]["worker_timeout"])
             ):
                 # Cleanup worker info
                 if (worker_id in workers):
                     with workers[worker_id].get_lock():
-                        if (not chunk.get_worker_status(worker_id).get_hash_only()):
+                        if (not chunk.get_worker_hash_only(worker_id)):
                             workers[worker_id].close_file_handle(chunk.get_id())
                             workers[worker_id].remove_file_path(chunk.get_id())
                         workers[worker_id].remove_chunk_hash(chunk.get_id())
@@ -286,7 +286,7 @@ def load_state():
                 for chunk_id in file.get_chunks():
                     for worker_id in chunks[chunk_id].get_workers():
                         file_worker_counts[file_id] += 1
-                        if (chunks[chunk_id].get_worker_status(worker_id).get_complete()):
+                        if (chunks[chunk_id].get_worker_complete(worker_id)):
                             completed_chunks += 1
                             downloaded_bytes += chunks[chunk_id].get_end() - chunks[chunk_id].get_start()
                         else:

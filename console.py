@@ -75,7 +75,7 @@ class Console():
         print(f"Range: [{chunk.get_start()}, {chunk.get_end()}]")
         print("Workers:")
         for worker_id in chunk.get_workers():
-            print(f"- {worker_id} D: {chunk.get_worker_status(worker_id).get_downloaded()}\tU: {chunk.get_worker_status(worker_id).get_uploaded()}\tH: {chunk.get_worker_status(worker_id).get_hash()}\tC: {chunk.get_worker_status(worker_id).get_complete()}\tLU: {round(time.time() - chunk.get_worker_status(worker_id).get_last_updated(), 2)}s ago")
+            print(f"- {worker_id} U: {chunk.get_worker_uploaded(worker_id)}\tH: {chunk.get_worker_hash(worker_id)}\tC: {chunk.get_worker_complete(worker_id)}\tLU: {round(time.time() - chunk.get_worker_last_updated(worker_id), 2)}s ago")
 
     def dynamic_list(self, list: list[object], displayFunction: Callable[[int, object], str]):
         list_index = 0
