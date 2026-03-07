@@ -20,6 +20,9 @@ class StateDB:
         self._write_conn = sqlite3.connect(db_path, check_same_thread=False)
         self._configure(self._write_conn)
         self._initialize_db()
+    
+    def close(self):
+        self._write_conn.close()
 
 
     @property

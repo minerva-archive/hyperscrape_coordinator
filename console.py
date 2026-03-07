@@ -1,5 +1,6 @@
 from threading import Thread
 from typing import Callable
+from state_db import db
 import time
 import state
 import os
@@ -9,7 +10,7 @@ class Console():
     """!
     @brief Console class handles the interactive console spawned by the coordinator when it runs
     """
-    
+
     def __init__(self):
         self._should_run = True
         self._thread = Thread(target=self.main_thread)
@@ -120,6 +121,8 @@ class Console():
         print("Removing workers...")
         for worker_id in list(state.workers.keys()):
             state.remove_worker(worker_id)
+        print("Closing database connection")
+        db.close()
         print("Done!")
         print("Quitting!")
         os._exit(0)
