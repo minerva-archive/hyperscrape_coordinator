@@ -1,13 +1,14 @@
 ###
 # State vars
 ###
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import math
 import os
 from threading import Lock
 import time
 from uuid import uuid4
 from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
+from state_db import db
 from workers import Worker
 from msgspec import json
 import pickle
@@ -94,9 +95,11 @@ class LeaderboardObject():
     
     def update_downloaded_bytes(self, change: int):
         self._downloaded_bytes += change
+        db.update_leaderboard_downloaded_bytes(self._discord_id, change)
     
     def update_downloaded_chunks(self, change: int):
         self._downloaded_chunks += change
+        db.update_leaderboard_downloaded_chunks(self._discord_id, change)
 
 
 global current_leaderboard
@@ -142,6 +145,8 @@ def save_leaderboard_state():
             pickle.dump(current_leaderboard, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def save_data_files():
+    # for now just short circuit this to avoid changing too many places
+    return
     save_chunk_state()
     save_file_state()
     save_file_hashes()
@@ -262,6 +267,75 @@ def cleanup_chunk_workers(chunk_id: str):
                 # Remove status
                 chunk.remove_worker_status(worker_id)
 
+def load_state_from_db():
+    global files
+    global file_hashes
+    global chunks
+    global current_leaderboard
+
+    files = {}
+    file_hashes = {}
+    chunks = {}
+    current_leaderboard = {}
+
+    # build file chunks as we build chunks list
+    file_chunks: dict[str, set[str]] = defaultdict(set)
+
+    # rebuild chunks from db
+    db_chunks = db.get_chunks()
+    for db_chunk in db_chunks:
+        db_workers = db.get_workers_for_chunk(db_chunk["id"])
+        worker_status: dict[str, WorkerStatus] = {}
+        for db_worker in db_workers:
+            worker_status[db_worker["worker_id"]] = WorkerStatus(
+                0,  # downloaded
+                db_worker["uploaded"],
+                bool(db_worker["complete"]),
+                db_worker["hash"],
+                db_worker["last_updated"],
+            )
+        chunk = HyperscrapeChunk(
+            db_chunk["id"],
+            db_chunk["start"],
+            db_chunk["end"],
+            worker_status,
+        )
+        file_chunks[db_chunk["file_id"]].add(chunk.get_id())
+        chunks[db_chunk["id"]] = chunk
+
+    # rebuild files from db
+    db_files = db.get_files()
+    for db_file in db_files:
+        files[db_file["id"]] = HyperscrapeFile(
+            db_file["id"],
+            db_file["path"],
+            db_file["size"],
+            db_file["url"],
+            db_file["chunk_size"],
+            file_chunks.get(db_file["id"], set()),
+            bool(db_file["complete"]),
+        )
+
+    # rebuild file_hashes from db
+    db_hashes = db.get_file_hashes()
+    for db_hash in db_hashes:
+        file_hashes[db_hash["path"]] = {
+            "md5": db_hash["md5"],
+            "sha1": db_hash["sha1"],
+            "sha256": db_hash["sha256"],
+        }
+
+    # rebuild current_leaderboard from db
+    db_leaderboard = db.get_leaderboard()
+    for db_entry in db_leaderboard:
+        current_leaderboard[db_entry["discord_id"]] = LeaderboardObject(
+            db_entry["discord_id"],
+            db_entry["discord_username"],
+            db_entry["avatar_url"],
+            db_entry["downloaded_chunks"],
+            db_entry["downloaded_bytes"],
+        )
+
 def load_files():
     global files_lock
     global files
@@ -279,38 +353,28 @@ def load_files():
     global assigned_chunks
     print("Loading current state...")
     try:
-        with files_lock:
-            with open("./file_state.bin", 'rb') as file:
-                files = pickle.load(file)
-            with open("./file_hashes.bin", 'rb') as file:
-                file_hashes = pickle.load(file)
-            with chunks_lock:
-                with open("./chunk_state.bin", 'rb') as file:
-                    chunks = pickle.load(file)
-            print("Generating files to download...")
-            for file_id in files:
-                file = files[file_id]
-                total_bytes += file.get_total_size() * config["general"]["trust_count"]
-                if (file.get_complete()):
-                    completed_files += 1
-                    downloaded_bytes += file.get_total_size()
-                    completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
-                else:
-                    file_worker_counts[file_id] = 0
-                    sorted_downloadable_files.append(file_id)
-                    for chunk_id in file.get_chunks():
-                        for worker_id in chunks[chunk_id].get_workers():
-                            file_worker_counts[file_id] += 1
-                            if (chunks[chunk_id].get_worker_status(worker_id).get_complete()):
-                                completed_chunks += 1
-                                downloaded_bytes += chunks[chunk_id].get_end() - chunks[chunk_id].get_start()
-                            else:
-                                assigned_chunks += 1
-                del file
+        load_state_from_db()
+        print("Generating files to download...")
+        for file_id in files:
+            file = files[file_id]
+            total_bytes += file.get_total_size() * config["general"]["trust_count"]
+            if (file.get_complete()):
+                completed_files += 1
+                downloaded_bytes += file.get_total_size()
+                completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
+            else:
+                file_worker_counts[file_id] = 0
+                sorted_downloadable_files.append(file_id)
+                for chunk_id in file.get_chunks():
+                    for worker_id in chunks[chunk_id].get_workers():
+                        file_worker_counts[file_id] += 1
+                        if (chunks[chunk_id].get_worker_status(worker_id).get_complete()):
+                            completed_chunks += 1
+                            downloaded_bytes += chunks[chunk_id].get_end() - chunks[chunk_id].get_start()
+                        else:
+                            assigned_chunks += 1
+            del file
         print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")
-        with current_leaderboard_lock:
-            with open("./leaderboard.bin", 'rb') as file:
-                current_leaderboard = pickle.load(file)
     except Exception as e:
         print("NOTE: Could not load previous file state:")
         print(e)

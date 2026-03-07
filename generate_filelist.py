@@ -5,12 +5,14 @@ import os
 from tqdm import tqdm
 import argparse
 
+from state_db import db
+
 parser = argparse.ArgumentParser(
                     prog='Filelist Generator',
                     description='Generates a filelist for Hyperscrape\'s coordinator',
                     epilog='Created by Hackerdude for Minerva')
-parser.add_argument("myrient_index", help="Path to the index to generate file objects for", type=argparse.FileType('r'))
-parser.add_argument("--ignore_file_list", help="Path to a list of files to ignore (in find command output format)", type=argparse.FileType('r'), action='append')
+parser.add_argument("myrient_index", help="Path to the index to generate file objects for", type=argparse.FileType('r', encoding='utf-8'))
+parser.add_argument("--ignore_file_list", help="Path to a list of files to ignore (in find command output format)", type=argparse.FileType('r', encoding='utf-8'), action='append')
 parser.add_argument("-r", "--reset", help="Reset and clear filelist", action="store_true")
 args = parser.parse_args()
 
@@ -66,6 +68,13 @@ for file_path in tqdm(full_list):
         int(file_sizes[file_path]),
         f"https://myrient.erista.me/files/{file_path[2:]}",
         (1024*1024)*50 # 50MB chunks
+    )
+    db.insert_file(
+        file_id,
+        file_path,
+        int(file_sizes[file_path]),
+        f"https://myrient.erista.me/files/{file_path[2:]}",
+        (1024*1024)*50
     )
     state.file_worker_counts[file_id] = 0
     state.sorted_downloadable_files.append(file_id)

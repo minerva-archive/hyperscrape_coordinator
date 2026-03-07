@@ -1,6 +1,5 @@
-flask
-waitress
-websockets
 msgspec
+requests
 fastapi[standard]
+websockets
 jinja2

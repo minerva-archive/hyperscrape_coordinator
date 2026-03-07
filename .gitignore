@@ -212,4 +212,5 @@ __marimo__/
 staging
 secrets.toml
 mnt
+state.db*
 config.toml

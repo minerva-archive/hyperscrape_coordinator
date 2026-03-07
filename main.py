@@ -17,6 +17,7 @@ import shutil
 
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 
+from state_db import db
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
 from fastapi import FastAPI, WebSocket, Request
@@ -56,8 +57,8 @@ def register_worker(ip: str, data: dict):
     with state.workers_lock:
         state.workers[worker_id] = Worker(worker_id, ip, data["max_concurrent"], discord_id)
     if (discord_id and not discord_id in state.current_leaderboard):
-        with state.current_leaderboard_lock:
-            state.current_leaderboard[discord_id] = state.LeaderboardObject(discord_id, discord_username, avatar_url, 0, 0)
+        state.current_leaderboard[discord_id] = state.LeaderboardObject(discord_id, discord_username, avatar_url, 0, 0)
+        db.insert_leaderboard_entry(discord_id, discord_username, avatar_url)
 
     return WSMessage(WSMessageType.REGISTER_RESPONSE, {
         "worker_id": worker_id,
@@ -90,6 +91,7 @@ def get_chunks(worker: Worker, data: dict):
                     chunk_id = str(uuid4())
                     state.chunks[chunk_id] = HyperscrapeChunk(chunk_id, start, end)
                     file.add_chunk(chunk_id)
+                    db.insert_chunk(file_id, chunk_id, start, end)
                     current_size = end
         
         # Ensure the worker isn't currently downloading this file
@@ -312,12 +314,20 @@ def upload_chunk(worker: Worker, data: dict):
             "sha1": sha1_hash.hexdigest(),
             "sha256": sha256_hash.hexdigest()
         }
+        db.insert_file_hash(
+            chunk_file_object.get_id(),
+            md5_hash.hexdigest(),
+            sha1_hash.hexdigest(),
+            sha256_hash.hexdigest()
+        )
+
         shutil.rmtree(temp_storage_folder, ignore_errors=True)
         chunk_file_object.mark_complete() # Mark file as actually complete
         for chunk_id in chunk_file_object.get_chunks():
             with state.chunks_lock:
                 with state.chunks[chunk_id].get_lock():
                     del state.chunks[chunk_id]
+                    db.delete_chunk(chunk_id)
         chunk_file_object.clear_chunks()
     
     state.completed_files += 1
