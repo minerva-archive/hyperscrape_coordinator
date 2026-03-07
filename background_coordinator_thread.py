@@ -1,6 +1,9 @@
 import state
 import time
 
+from state_db import db
+
+
 def background_coordinator():
     last_save_time = time.time()
     last_stat_calc_time = time.time()
@@ -15,4 +18,5 @@ def background_coordinator():
         if (current - last_save_time > 600): # Save every 10 minutes
             state.save_data_files()
             last_save_time = current
-        time.sleep(1)
+        db.flush()
+        time.sleep(0.1)
