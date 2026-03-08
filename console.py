@@ -19,11 +19,6 @@ class Console():
         self._commands = {
             "help": [self.help, "Print information about available commands"],
             "list-workers": [self.list_workers, "List workers"],
-            "list-files": [self.list_files, "List files"],
-            "get-file": [self.get_file, "List chunks for a file and other info (specify file id as second arg)"],
-            "list-downloadable": [self.list_downloadable, "List downloadable files"],
-            "get-chunk": [self.get_chunk, "Get chunk info (specify chunk id as second arg)"],
-            "reload-files": [self.reload_files, "Reload files (WARN: EXPERIMENTAL!)"],
             "quit": [self.quit, "Shutdown the server"]
         }
 
@@ -51,47 +46,11 @@ class Console():
         for command in self._commands:
             print(f"{command}\t-\t{self._commands[command][1]}")
 
-    def reload_files(self, argv):
-        state.load_state()
-
-    def list_downloadable(self, argv):
-        print("Downloadable Files:")
-        self.dynamic_list(
-            state.sorted_downloadable_files,
-            displayFunction=lambda index, el: f"{index}. {el} ({state.files[el].get_path()})"
-        )
-
     def list_workers(self, argv):
         print("Workers:")
         self.dynamic_list(
-            list(state.workers.keys()),
-            displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.workers[worker_id].get_ip()} (joined {round(time.time() - state.workers[worker_id].get_joined(), 2)}s ago)")
-
-    def list_files(self, argv):
-        print("Files (path, complete):")
-        self.dynamic_list(
-            list(state.files.keys()),
-            displayFunction=lambda index, file_id: f"{index}. {file_id}\t-\t{state.files[file_id].get_path()} ({state.files[file_id].get_complete()})")
-    
-    def get_file(self, argv):
-        file_id = argv[1]
-        file = state.files[file_id]
-        print(f"File: {file.get_id()}")
-        print(f"Path: {file.get_path()}")
-        print(f"Size: {file.get_total_size()}")
-        print(f"URL: {file.get_url()}")
-        print(f"Chunks for {file_id}:")
-        self.dynamic_list(
-            file.get_chunks(),
-            displayFunction=lambda index, chunk_id: f"{index}. {chunk_id}\t-\tWORKERS: ({state.chunks[chunk_id].get_worker_count()})")
-
-    def get_chunk(self, argv):
-        chunk = state.chunks[argv[1]]
-        print(f"Chunk: {argv[1]}")
-        print(f"Range: [{chunk.get_start()}, {chunk.get_end()}]")
-        print("Workers:")
-        for worker_id in chunk.get_workers():
-            print(f"- {worker_id} U: {chunk.get_worker_uploaded(worker_id)}\tH: {chunk.get_worker_hash(worker_id)}\tC: {chunk.get_worker_complete(worker_id)}\tLU: {round(time.time() - chunk.get_worker_last_updated(worker_id), 2)}s ago")
+            list(state.local_workers.keys()),
+            displayFunction=lambda index, worker_id: f"{index}. {worker_id}\t-\t{state.local_workers[worker_id].get_ip()} (joined {round(time.time() - state.local_workers[worker_id].get_joined(), 2)}s ago)")
 
     def dynamic_list(self, list: list[object], displayFunction: Callable[[int, object], str]):
         # @TODO: This is a bit broken but it functions fine
@@ -124,6 +83,6 @@ class Console():
         for worker_id in list(state.workers.keys()):
             asyncio.run(state.remove_worker(worker_id))
         print("Closing database connection")
-        db.close()
+        state.db.close()
         print("Quit!")
         os.kill(os.getpid(), signal.SIGINT)
