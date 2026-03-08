@@ -10,7 +10,7 @@ def background_coordinator():
     """
     last_stat_calc_time = time.time()
     last_downloaded = state.downloaded_bytes
-    while True:
+    while (not state.shutting_down):
         current = time.time()
 
         # Calculate current upload speed

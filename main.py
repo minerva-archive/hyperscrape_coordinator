@@ -1,5 +1,6 @@
 from threading import Thread
 import asyncio
+from contextlib import asynccontextmanager
 
 from background_coordinator_thread import background_coordinator
 from fastapi.templating import Jinja2Templates
@@ -8,6 +9,7 @@ from console import Console
 import requests
 import uvicorn
 import state
+from state_db import db
 
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from websocket_handlers import detach_chunk, get_chunks, register_worker, upload_chunk
@@ -17,10 +19,14 @@ from workers import Worker
 
 import traceback
 
-print("=========================")
-print("=  HYPERSCRAPE SERVER   =")
-print("= Created By Hackerdude =")
-print("=========================")
+background_thread: Thread | None = None
+
+def ensure_background_thread():
+    global background_thread
+    if (background_thread and background_thread.is_alive()):
+        return
+    background_thread = Thread(target=background_coordinator, daemon=True)
+    background_thread.start()
 
 
 async def handler(websocket: WebSocket, ip_address: str):
@@ -92,16 +98,20 @@ async def handler(websocket: WebSocket, ip_address: str):
                 return
 
 
-# Background thread for occasional tasks
-background_thread = Thread(target=background_coordinator)
-background_thread.start()
-
-
-# Console setup
-console = Console()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    state.shutting_down = False
+    ensure_background_thread()
+    try:
+        yield
+    finally:
+        state.shutting_down = True
+        for worker_id in list(state.workers.keys()):
+            await state.remove_worker(worker_id)
+        db.close()
 
 # FastAPI
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
 
@@ -218,8 +228,11 @@ def slash_index(request: Request):
 def html_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-console.start()
-# Start the main app
-#if __name__ == "__main__":
-#    console.start()
-#    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
+if __name__ == "__main__":
+    print("=========================")
+    print("=  HYPERSCRAPE SERVER   =")
+    print("= Created By Hackerdude =")
+    print("=========================")
+    console = Console()
+    console.start()
+    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
