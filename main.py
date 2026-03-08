@@ -156,11 +156,13 @@ def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
     @param limit (int, optional): The number of leaderboard items to get. Defaults to 25.
     @param offset (int, optional): The offset in the leaderboard to get items from. Defaults to 0.
 
-    @return (list[dict]): The leaderboard items, in ascending rank order
+    @return (list[dict]): The leaderboard items, in descending rank order
     """
-
+    limit = max(0, min(limit, 100))
+    offset = max(0, offset)
+    end = offset + limit
     response = []
-    for leaderboard_id in state.current_leaderboard_order[offset:limit]:
+    for leaderboard_id in state.current_leaderboard_order[offset:end]:
         leaderboard_object = state.current_leaderboard[leaderboard_id]
         response.append({
             "discord_username": leaderboard_object.get_discord_username(),
