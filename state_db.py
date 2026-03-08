@@ -90,137 +90,147 @@ class StateDBConnection(ContextDecorator):
     
     # Misc for stats
     async def get_total_file_count(self) -> int:
-        await self._cursor.execute("SELECT COUNT(*) as count FROM files")
-        return await self._cursor.fetchone()["count"]
+        await self._cursor.execute("SELECT COUNT(*) as count FROM file")
+        return int((await self._cursor.fetchone())[0])
         
     async def get_total_chunk_count(self) -> int:
-        await self._cursor.execute("SELECT COUNT(*) as count FROM files")
-        return await self._cursor.fetchone()["count"]
+        await self._cursor.execute("SELECT COUNT(*) as count FROM file")
+        return int((await self._cursor.fetchone())[0])
     
     async def get_completed_file_count(self) -> int:
-        await self._cursor.execute("SELECT COUNT(*) as count FROM files WHERE complete")
-        return await self._cursor.fetchone()["count"]
+        await self._cursor.execute("SELECT COUNT(*) as count FROM file WHERE complete")
+        return int((await self._cursor.fetchone())[0])
         
     async def get_completed_chunk_count(self) -> int:
         await self._cursor.execute("SELECT COUNT(DISTINCT chunk_id) as count FROM worker_status WHERE hash IS NOT NULL")
-        return await self._cursor.fetchone()["count"]
+        return int((await self._cursor.fetchone())[0])
         
     async def get_assigned_chunk_count(self) -> int:
         await self._cursor.execute("SELECT COUNT(DISTINCT chunk_id) as count FROM worker_status")
-        return await self._cursor.fetchone()["count"]
+        return int((await self._cursor.fetchone())[0])
         
     async def get_uploaded_bytes(self) -> int:
         await self._cursor.execute("SELECT SUM(uploaded) as sum FROM worker_status")
-        return await self._cursor.fetchone()["sum"]
+        result = (await self._cursor.fetchone())[0]
+        if (result == None):
+            result = 0
+        return int(result)
         
     async def get_completed_bytes(self) -> int:
         await self._cursor.execute("SELECT SUM(size) as sum FROM file WHERE size IS NOT NULL AND complete")
-        return await self._cursor.fetchone()["sum"]
+        return int((await self._cursor.fetchone())[0])
     
     async def get_total_bytes(self) -> int:
         await self._cursor.execute("SELECT SUM(size) as sum FROM file")
-        return await self._cursor.fetchone()["sum"]
+        return int((await self._cursor.fetchone())[0])
 
     # Get objects
     async def get_stats(self) -> dict[str, DBStat]:
-        await self._cursor.execute("SELECT * FROM stat")
+        await self._cursor.execute("SELECT key, value FROM stat")
         records = {}
         for record in self._cursor:
-            records[record["key"]] = DBStat(
-                record["key"],
-                record["value"]
+            records[record[0]] = DBStat(
+                record[0],
+                record[1]
             )
         return records
         
     # Get objects
     async def get_stat(self, key: str) -> DBStat:
-        await self._cursor.execute("SELECT * FROM stat WHERE key = %s", (key,))
+        await self._cursor.execute("SELECT key, value FROM stat WHERE key = %s", (key,))
         record = await self._cursor.fetchone()
         return DBStat(
-            record["key"],
-            record["value"]
+            record[0],
+            record[1]
         )
 
     async def get_file(self, file_id: str) -> DBFile:
-        await self._cursor.execute("SELECT * FROM file WHERE id = %s", (file_id,))
+        await self._cursor.execute("SELECT id, path, size, url, chunk_size, complete FROM file WHERE id = %s", (file_id,))
         record = await self._cursor.fetchone()
         return DBFile(
-            record["id"],
-            record["path"],
-            record["size"],
-            record["url"],
-            record["chunk_size"],
-            record["complete"]
+            record[0],
+            record[1],
+            int(record[2]),
+            record[3],
+            int(record[4]),
+            record[5]
         )
         
     async def get_chunk(self, chunk_id: str) -> DBChunk:
-        await self._cursor.execute("SELECT * FROM chunk WHERE id = %s", (chunk_id,))
+        await self._cursor.execute("SELECT id, file_id, range_start, range_end FROM chunk WHERE id = %s", (chunk_id,))
         record = await self._cursor.fetchone()
         return DBChunk(
-            record["id"],
-            record["file_id"],
-            record["range_start"],
-            record["range_end"]
+            record[0],
+            record[1],
+            int(record[2]),
+            int(record[3])
         )
 
     async def get_chunks_for_file(self, file_id: str) -> list[DBChunk]:
-        await self._cursor.execute("SELECT * FROM chunk WHERE file_id = %s", (file_id,))
+        await self._cursor.execute("SELECT id, file_id, range_start, range_end FROM chunk WHERE file_id = %s", (file_id,))
         records: list[DBChunk] = []
         for record in self._cursor:
             records.append(DBChunk(
-                record["id"],
-                record["file_id"],
-                record["range_start"],
-                record["range_end"]
+                record[0],
+                record[1],
+                int(record[2]),
+                int(record[3])
             ))
         return records
 
     async def get_chunk_worker_status(self, chunk_id: str) -> list[DBWorkerStatus]:
-        await self._cursor.execute("SELECT * FROM worker_status WHERE chunk_id = %s", (chunk_id,))
+        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only FROM worker_status WHERE chunk_id = %s", (chunk_id,))
         records: list[DBWorkerStatus] = []
         for record in self._cursor:
             records.append(DBWorkerStatus(
-                record["chunk_id"],
-                record["worker_id"],
-                record["uploaded"],
-                record["hash"],
-                record["hash_only"]
+                record[0],
+                record[1],
+                int(record[2]),
+                record[3],
+                record[4]
             ))
         return records
         
     async def get_worker_status(self, chunk_id: str, worker_id: str) -> DBWorkerStatus:
-        await self._cursor.execute("SELECT * FROM worker_status WHERE chunk_id = %s AND worker_id = %s", (chunk_id, worker_id,))
+        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only FROM worker_status WHERE chunk_id = %s AND worker_id = %s", (chunk_id, worker_id,))
         record = await self._cursor.fetchone()
         return DBWorkerStatus(
-            record["chunk_id"],
-            record["worker_id"],
-            record["uploaded"],
-            record["hash"],
-            record["hash_only"]
+            record[0],
+            record[1],
+            int(record[2]),
+            record[3],
+            record[4]
         )
 
     async def get_leaderboard(self) -> list[DBLeaderboardItem]:
-        await self._cursor.execute("SELECT * FROM leaderboard ORDER BY downloaded_bytes DESC")
+        await self._cursor.execute("SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard ORDER BY downloaded_bytes DESC")
         records: list[DBLeaderboardItem] = []
         for record in self._cursor:
             records.append(DBLeaderboardItem(
-                record["discord_id"],
-                record["discord_username"],
-                record["avatar_url"],
-                record["downloaded_chunks"],
-                record["downloaded_bytes"]
+                record[0],
+                record[1],
+                record[2],
+                int(record[3]),
+                int(record[4])
             ))
         return records
         
     async def get_leaderboard_item(self, discord_id: str) -> DBLeaderboardItem:
-        await self._cursor.execute("SELECT * FROM leaderboard WHERE discord_id = %s", (discord_id, ))
-        return await self._cursor.fetchone()
+        await self._cursor.execute("SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard WHERE discord_id = %s", (discord_id, ))
+        record = self._cursor.fetchone()        
+        return DBLeaderboardItem(
+            record[0],
+            record[1],
+            record[2],
+            int(record[3]),
+            int(record[4])
+        )
         
     async def get_chunk_and_file_and_current_status(self, chunk_id: str, worker_id: str):
         await self._cursor.execute(
-            "SELECT chunk.id AS chunk_id, chunk.range_start AS chunk_range_start, chunk.range_end AS chunk_range_end "
-            "file.id AS file_id, file.path AS file_path, file.size AS file_size, file.url AS file_url, file.chunk_size AS file_chunk_size, file.complete AS file.complete "
-            "worker_status.worker_id AS worker_status_id, worker_status.uploaded AS worker_status_uploaded, worker_status.hash AS worker_status_hash, worker_status.hash_only AS worker_status_hash_only "
+            "SELECT chunk.id, chunk.range_start, chunk.range_end "
+            "file.id, file.path, file.size, file.url, file.chunk_size, file.complete "
+            "worker_status.worker_id, worker_status.uploaded, worker_status.hash, worker_status.hash_only "
             "FROM chunk "
             "JOIN file ON file.id=chunk.file_id "
             "JOIN worker_status ON worker_status.chunk_id=chunk.id "
@@ -233,25 +243,25 @@ class StateDBConnection(ContextDecorator):
         
         return (
             DBChunk(
-                record["file_id"],
-                record["chunk_file_id"],
-                record["chunk_range_start"],
-                record["chunk_range_end"]
+                record[0],
+                record[3],
+                int(record[1]),
+                int(record[2])
             ),
             DBFile(
-                record["file_id"],
-                record["file_path"],
-                record["file_size"],
-                record["file_url"],
-                record["file_chunk_size"],
-                record["file_complete"]
+                record[3],
+                record[4],
+                int(record[5]),
+                record[6],
+                int(record[7]),
+                record[8]
             ),
             DBWorkerStatus(
-                record["worker_status_chunk_id"],
-                record["worker_status_worker_id"],
-                record["worker_status_uploaded"],
-                record["worker_status_hash"],
-                record["worker_status_hash_only"]
+                record[0],
+                record[9],
+                int(record[10]),
+                record[11],
+                record[12]
             )
         )
             
@@ -265,9 +275,9 @@ class StateDBConnection(ContextDecorator):
     async def get_ordered_downloadable_files(self, limit: int, offset: int, worker_limit: int, current_worker_id: str, current_worker_ip: str, free_space: int):
         await self._cursor.execute(
             "SELECT * FROM ("
-                "SELECT file.id as file_id, file.size as file_size, file.url as file_url, " # Select file properties
-                "chunk.id as chunk_id, chunk.range_start as chunk_range_start, chunk.range_end as chunk_range_end " # Select chunk properties
-                "COUNT(worker_id) as assigned_workers " # Count assigned workers
+                "SELECT file.id, file.size, file.url, " # Select file properties
+                "chunk.id, chunk.range_start, chunk.range_end " # Select chunk properties
+                "COUNT(worker_id) " # Count assigned workers
                 "FROM file " # FROM file
                 "JOIN chunk ON chunk.file_id=file.id " # Join chunks to files
                 "JOIN worker_status ON worker_status.chunk_id=chunk.id " # Join worker statuses to files

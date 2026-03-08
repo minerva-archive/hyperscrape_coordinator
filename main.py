@@ -206,7 +206,7 @@ async def html_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 # Setup state
-state.initialise() # @TODO @FIXME
+asyncio.run(state.initialise())
 
 # Background thread for occasional tasks
 background_thread = Thread(target=background_coordinator)
@@ -217,6 +217,5 @@ background_thread.start()
 console = Console()
 console.start()
 # Start the main app
-#if __name__ == "__main__":
-#    console.start()
-#    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
