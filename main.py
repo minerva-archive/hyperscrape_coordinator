@@ -92,21 +92,9 @@ async def handler(websocket: WebSocket, ip_address: str):
                 await state.remove_worker(worker.get_id())
                 return
 
-
-
-# Background thread for occasional tasks
-background_thread = Thread(target=background_coordinator)
-background_thread.start()
-
-
-# Console setup
-console = Console()
-
 # FastAPI
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-
-
 
 @app.websocket("/worker")
 async def websocket_endpoint(websocket: WebSocket):
@@ -217,6 +205,16 @@ async def slash_index(request: Request):
 async def html_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+# Setup state
+state.initialise() # @TODO @FIXME
+
+# Background thread for occasional tasks
+background_thread = Thread(target=background_coordinator)
+background_thread.start()
+
+
+# Console setup
+console = Console()
 console.start()
 # Start the main app
 #if __name__ == "__main__":

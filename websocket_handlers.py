@@ -105,8 +105,8 @@ async def get_chunks(worker: Worker, data: dict) -> WSMessage:
                 "file_id": downloadable_chunk["file_id"],
                 "url": downloadable_chunk["file_url"],
                 "range": [
-                    downloadable_chunk["chunk_start"],
-                    downloadable_chunk["chunk_end"]
+                    downloadable_chunk["chunk_range_start"],
+                    downloadable_chunk["chunk_range_end"]
                 ]
             }
                 
@@ -175,7 +175,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     # Check if the chunk instance is NOT complete
     async with state.db.get_connection() as connection:
         current_status = await connection.get_worker_status(chunk.id, worker.get_id()) # @TODO: This could be optimised
-        if (current_status.uploaded != chunk.end - chunk.start):
+        if (current_status.uploaded != chunk.range_end - chunk.range_start):
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received", "chunk_id": chunk_id}) # Chunk not yet finished
 
     # If the chunk instance was the downloaded one, we should close the file handle and rename it
@@ -264,7 +264,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
     # If we are done though, then we should construct and move the entire file
     chunk_files = []
-    for file_chunk in sorted(file_object_chunks, key=lambda file_chunk: file_chunk.start):
+    for file_chunk in sorted(file_object_chunks, key=lambda file_chunk: file_chunk.range_start):
         chunk_files.append(get_chunk_path(chunk_file_object.id, file_chunk.id))
 
     # Now we construct the final file!

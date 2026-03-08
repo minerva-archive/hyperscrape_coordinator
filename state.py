@@ -1,6 +1,7 @@
 ###
 # Global state vars
 ###
+import asyncio
 from threading import Lock
 from redis_db import RedisDB
 from workers import Worker
@@ -168,3 +169,6 @@ async def cleanup_chunk_workers(chunk_id: str) -> None:
                 # Remove status info
                 redis.remove_worker_status_last_updated(chunk_id, worker_status.worker_id)
                 connection.delete_worker_status(chunk_id, worker_status.worker_id)
+
+async def initialise():
+    await db.open()

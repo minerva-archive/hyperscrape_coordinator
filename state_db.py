@@ -18,11 +18,11 @@ class DBFile():
         self.complete = complete
 
 class DBChunk():
-    def __init__(self, id: str, file_id: str, start: int, end: int):
+    def __init__(self, id: str, file_id: str, range_start: int, range_end: int):
         self.id = id
         self.file_id = file_id
-        self.start = start
-        self.end = end
+        self.range_start = range_start
+        self.range_end = range_end
 
 class DBWorkerStatus():
     def __init__(self, chunk_id: str, worker_id: str, uploaded: int, hash: str|None, hash_only: bool):
@@ -58,7 +58,14 @@ class StateDB:
     """
 
     def __init__(self, conninfo: str):
-        self._pool = psycopg_pool.AsyncConnectionPool(conninfo)
+        self._pool = psycopg_pool.AsyncConnectionPool(conninfo, open=False)
+
+    async def open(self):
+        await self._pool.open(wait=True)
+        connection: AsyncConnection
+        async with self._pool.connection() as connection:
+            with open("./state_db_init.sql") as file:
+                await connection.execute(file.read())
 
     def get_connection(self) -> StateDBConnection:
         return StateDBConnection(self)
@@ -72,7 +79,7 @@ class StateDBConnection(ContextDecorator):
         self.stateDB = stateDB
 
     async def __enter__(self) -> Self:
-        self.connection = await self.stateDB.get_connection()
+        self.connection = await self.stateDB._pool.connection()
         self.connection.execute("BEGIN")
         return self
 
@@ -164,8 +171,8 @@ class StateDBConnection(ContextDecorator):
             return DBChunk(
                 record["id"],
                 record["file_id"],
-                record["start"],
-                record["end"]
+                record["range_start"],
+                record["range_end"]
             )
 
     async def get_chunks_for_file(self, file_id: str) -> list[DBChunk]:
@@ -176,8 +183,8 @@ class StateDBConnection(ContextDecorator):
                 records.append(DBChunk(
                     record["id"],
                     record["file_id"],
-                    record["start"],
-                    record["end"]
+                    record["range_start"],
+                    record["range_end"]
                 ))
             return records
 
@@ -229,7 +236,7 @@ class StateDBConnection(ContextDecorator):
     async def get_chunk_and_file_and_current_status(self, chunk_id: str, worker_id: str):
         async with self.connection.cursor() as cur:
             await cur.execute(
-                "SELECT chunk.id AS chunk_id, chunk.start AS chunk_start, chunk.end AS chunk_end "
+                "SELECT chunk.id AS chunk_id, chunk.range_start AS chunk_range_start, chunk.range_end AS chunk_range_end "
                 "file.id AS file_id, file.path AS file_path, file.size AS file_size, file.url AS file_url, file.chunk_size AS file_chunk_size, file.complete AS file.complete "
                 "worker_status.worker_id AS worker_status_id, worker_status.uploaded AS worker_status_uploaded, worker_status.hash AS worker_status_hash, worker_status.hash_only AS worker_status_hash_only "
                 "FROM chunk "
@@ -246,8 +253,8 @@ class StateDBConnection(ContextDecorator):
                 DBChunk(
                     record["file_id"],
                     record["chunk_file_id"],
-                    record["chunk_start"],
-                    record["chunk_end"]
+                    record["chunk_range_start"],
+                    record["chunk_range_end"]
                 ),
                 DBFile(
                     record["file_id"],
@@ -279,7 +286,7 @@ class StateDBConnection(ContextDecorator):
             await cur.execute(
                 "SELECT * FROM ("
                     "SELECT file.id as file_id, file.size as file_size, file.url as file_url, " # Select file properties
-                    "chunk.id as chunk_id, chunk.start as chunk_start, chunk.end as chunk_end " # Select chunk properties
+                    "chunk.id as chunk_id, chunk.range_start as chunk_range_start, chunk.range_end as chunk_range_end " # Select chunk properties
                     "COUNT(worker_id) as assigned_workers " # Count assigned workers
                     "FROM file " # FROM file
                     "JOIN chunk ON chunk.file_id=file.id " # Join chunks to files
@@ -302,8 +309,8 @@ class StateDBConnection(ContextDecorator):
         async with self.connection.cursor() as cur:
             await cur.execute(
                 "INSERT INTO leaderboard (discord_id, discord_username, avatar_url) "
-                "VALUES ($1, $2, $3) ",
-                "ON CONFLICT DO UPDATE discord_username=$2, avatar_url=$3"
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT DO UPDATE discord_username=$2, avatar_url=$3",
                 (discord_id, discord_username, avatar_url)
             )
         
@@ -356,12 +363,12 @@ class StateDBConnection(ContextDecorator):
 
 
     # Chunk mutations
-    async def insert_chunk(self, chunk_id: str, file_id: str, start: int, end: int):
+    async def insert_chunk(self, chunk_id: str, file_id: str, range_start: int, range_end: int):
         async with self.connection.cursor() as cur:
             await cur.execute(
-                "INSERT INTO chunk (id, file_id, start, end) "
+                "INSERT INTO chunk (id, file_id, range_start, range_end) "
                 "VALUES ($1, $2, $3, $4)",
-                (chunk_id, file_id, start, end)
+                (chunk_id, file_id, range_start, range_end)
             )
 
     async def delete_chunk(self, chunk_id: str):
