@@ -61,7 +61,7 @@ async def register_worker(ip: str, data: dict) -> WSMessage:
 
 
 
-def get_chunks(worker: Worker, data: dict) -> WSMessage:
+async def get_chunks(worker: Worker, data: dict) -> WSMessage:
     """!
     @brief Get what chunks a worker should download
 
@@ -74,97 +74,48 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
     total, used, free = shutil.disk_usage(state.config["paths"]["chunk_temp_path"]) # Get storage path stats
     num_chunks_to_get = int(data["count"])
 
-    chunks_to_download = []
-    chunk_to_file = {}
     # Get files with high worker counts
     # So the entire network is working together for a single file essenially
-    for file_id in state.sorted_downloadable_files:
-        if (len(chunks_to_download) == num_chunks_to_get):
-            break
-        downloading_file_already = False
-
-        # If the file doesn't have a total size then we need to do that!
-        file = state.files[file_id]
-        if (file.get_total_size() == None):
-            file.set_total_size(get_url_size(file.get_url()))
-
-        if (file.get_total_size() == 0):
-            continue # Skip empty files
-
-        # If the file hasn't generated chunks then we need to do that!
-        with file.get_lock():
-            if (len(file.get_chunks()) == 0):
-                print("[ERR] A FILE WAS FOUND WITH NO CHUNKS!")
-                print("THIS SHOULD BE IMPOSSIBLE!")
-                print(f"File ID: {file.get_id()}")
-                continue # This SHOULD be IMPOSSIBLE
+    current_offset = 0
+    connection: StateDBConnection
+    async with state.db.get_connection() as connection:
+        response = {}
+        while (len(response) <= num_chunks_to_get or current_offset+num_chunks_to_get > state.total_chunk_count):
+            chunks = await connection.get_ordered_downloadable_files(
+                        num_chunks_to_get,
+                        current_offset,
+                        state.config["general"]["trust_count"],
+                        worker.get_id(),
+                        worker.get_ip()
+                    )
             
-            # Ensure the worker isn't currently downloading this file
-            for chunk_id in file.get_chunks():
-                # Cleanup workers that have not uploaded in a while
-                state.cleanup_chunk_workers(chunk_id)
-                has_worker_ip = False # We ensure the same IP isn't assigned the same file!
-                with state.chunks[chunk_id].get_lock():
-                    for worker_id in state.chunks[chunk_id].get_workers():
-                        # Chunk statuses may contain completed worker chunk instances from workers that are NO LONGER connected
-                        if (not worker_id in state.workers):
-                            continue
-                        if (state.workers[worker_id].get_ip() == worker.get_ip()):
-                            has_worker_ip = True # Another worker on the same IP has this file, don't assign it
-                            break
+            for downloadable_chunk in chunks:
+                if (len(response) == num_chunks_to_get):
+                    break                
+                print(downloadable_chunk)
 
-                if (has_worker_ip or # Worker on the same IP...
-                    (
-                        state.chunks[chunk_id].has_worker(worker.get_id()) and # Or worker on the same chunk
-                        not state.chunks[chunk_id].get_worker_complete(worker.get_id()) # That isn't complete... (since we allow re-assignment of the same file (but a differnet chunk) once the file is complete!) @TODO: Redundant checks?
-                    )):
-                    downloading_file_already = True # If worker is CURRENTLY downloading this FILE then we skip the entire file
+                if (downloadable_chunk["file_size"] > free):
                     break
-        
-        if (downloading_file_already):
-            continue
 
-        highest_chunk_id = None
-        for chunk_id in file.get_chunks():
-            # Get the chunk in this file with the highest number of downloaders under trust_count
-            if (state.chunks[chunk_id].get_worker_count() >= state.config["general"]["trust_count"]):
-                continue
-            if (state.chunks[chunk_id].has_worker(worker.get_id())):
-                continue # If worker has already downloaded THIS chunk then we skip it from candidates
-            if (highest_chunk_id == None or state.chunks[chunk_id].get_worker_count() > state.chunks[highest_chunk_id].get_worker_count()):
-                highest_chunk_id = chunk_id
-        if (highest_chunk_id != None):
-            # If the free space is less than the chunk, we don't assign this chunk
-            chunk_size = state.chunks[highest_chunk_id].get_end() - state.chunks[highest_chunk_id].get_start()
-            free -= state.assigned_chunks * chunk_size
-            if (free <= chunk_size): 
-                continue
-            chunk_to_file[highest_chunk_id] = file_id
-            chunks_to_download.append(highest_chunk_id)
+                free -= downloadable_chunk["file_size"]
 
-    ###
-    # We now have a list of chunks to download
-    ###
-    response = {}
-    for chunk_id in chunks_to_download:
-        chunk = state.chunks[chunk_id]
-        file = state.files[chunk_to_file[chunk_id]]
-
-        with state.chunks[chunk_id].get_lock():
-            state.chunks[chunk_id].add_worker_status(worker.get_id())
-            # If this worker is the last one on a chunk then it should be the one that is actually written to the disk
-            if (state.chunks[chunk_id].get_worker_count() == state.config["general"]["trust_count"]):
-                state.chunks[chunk_id].set_worker_hash_only(worker.get_id(), False)
-        
-        response[chunk_id] = {
-            "file_id": chunk_to_file[chunk_id],
-            "url": file.get_url().replace('#', '%23'), # Fix URLs, hackish
-            "range": [
-                chunk.get_start(),
-                chunk.get_end()
-            ]
-        }
-    state.assigned_chunks += len(chunks_to_download)
+                connection.insert_worker_status(
+                    downloadable_chunk["chunk_id"],
+                    worker.get_id(),
+                    0,
+                    None,
+                    not downloadable_chunk["hash_only"] # If the entire chunk is hash only, we should make this worker NOT hash only
+                )
+                
+                response[downloadable_chunk["chunk_id"]] = {
+                    "file_id": downloadable_chunk["file_id"],
+                    "url": downloadable_chunk["file_url"],
+                    "range": [
+                        downloadable_chunk["chunk_start"],
+                        downloadable_chunk["chunk_end"]
+                    ]
+                }
+                
     return WSMessage(WSMessageType.CHUNK_RESPONSE, response)
 
 

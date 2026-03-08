@@ -163,5 +163,5 @@ async def cleanup_chunk_workers(chunk_id: str) -> None:
                         local_workers[worker_status.worker_id].remove_file_path(chunk_id)
                     local_workers[worker_status.worker_id].remove_chunk_hash(chunk_id)
                 # Remove status info
-                redis.remove_worker_status_last_updated(worker_status.worker_id)
+                redis.remove_worker_status_last_updated(chunk_id, worker_status.worker_id)
                 connection.delete_worker_status(chunk_id, worker_status.worker_id)

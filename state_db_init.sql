@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS worker_status
     PRIMARY KEY (chunk_id, worker_id)
 );
 
+CREATE TABLE IF NOT EXISTS worker_info
+(
+    id       TEXT PRIMARY KEY NOT NULL,
+    ip       TEXT NOT NULL
+)
+
 CREATE TABLE IF NOT EXISTS file_hash
 (
     file_id         TEXT NOT NULL UNIQUE REFERENCES file(id),

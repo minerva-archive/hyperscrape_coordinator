@@ -47,6 +47,11 @@ class DBLeaderboardItem():
         self.downloaded_chunks = downloaded_chunks
         self.downloaded_bytes = downloaded_bytes
 
+class DBWorkerStatus():
+    def __init__(self, id: str, ip: str):
+        self.id = id
+        self.ip = ip
+
 class StateDB:
     """!
     @brief The state's database storage system
@@ -214,12 +219,36 @@ class StateDBConnection(ContextDecorator):
                 ))
             return records
         
-    # Leaderboard mutation
     async def get_leaderboard_item(self, discord_id: str) -> DBLeaderboardItem:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM leaderboard WHERE discord_id = $1", (discord_id, ))
             return await cur.fetchone()
-
+        
+    # Ordered getter
+    async def get_ordered_downloadable_files(self, limit: int, offset: int, worker_limit: int, current_worker_id: str, current_worker_ip: str, free_space: int):
+        async with self.connection.cursor() as cur:
+            await cur.execute(
+                "SELECT * FROM ("
+                    "SELECT file.id as file_id, file.size as file_size, file.url as file_url, " # Select file properties
+                    "chunk.id as chunk_id, chunk.start as chunk_start, chunk.end as chunk_end " # Select chunk properties
+                    "COUNT(worker_id) as assigned_workers " # Count assigned workers
+                    "FROM file " # FROM file
+                    "JOIN chunk ON chunk.file_id=file.id " # Join chunks to files
+                    "JOIN worker_status ON worker_status.chunk_id=chunk.id " # Join worker statuses to files
+                    "JOIN worker_info ON worker_info.id=worker_status.worker_id " # Join worker info (for IP filtering)
+                    "WHERE (NOT file.complete) " # Only in-progress files
+                    "AND (file.size IS NOT NULL AND file.size != 0 AND file.size < $6) " # Only with a defined size that is less than free space
+                    "AND worker_status.worker_id != $4 AND worker_info.ip != $5 " # Where the worker isn't us
+                    "GROUP BY chunk.id ORDER BY COUNT(worker_id)" # Get the chunks from most workers to least
+                ") "
+                "JOIN (SELECT 1 WHERE EXISTS (SELECT 1 FROM worker_status WHERE worker_status.chunk_id=chunk_id AND NOT hash_only)) as hash_only "
+                "WHERE assigned_workers < $3 " # Get only with workers less than the limit
+                "LIMIT $1 OFFSET $2", # So we can "stream" it
+                (limit, offset, worker_limit, current_worker_id, current_worker_ip, free_space)
+            )
+            return await cur.fetchall()
+        
+    # Leaderboard mutation
     async def add_to_leaderboard(self, discord_id: str, discord_username: str, avatar_url: str):
         async with self.connection.cursor() as cur:
             await cur.execute(
@@ -293,7 +322,7 @@ class StateDBConnection(ContextDecorator):
                 (chunk_id,)
             )
 
-    async def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str = "", hash_only: bool = True):
+    async def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str|None = None, hash_only: bool = True):
         async with self.connection.cursor() as cur:
             await cur.execute(
                 "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only) "

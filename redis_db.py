@@ -9,18 +9,23 @@ class RedisDB:
 
     def remove_worker(self, worker_id: str):
         self.remove_worker_status_last_updated(worker_id)
+        self.redis.delete(f"w:{worker_id}:ip")
 
     def add_worker(self, worker: Worker):
         self.change_total_workers(1)
+        self.redis.set(f"w:{worker.get_id()}:ip", worker.get_ip())
+
+    def get_worker_ip(self, worker_id: str):
+        return self.redis.get(f"w:{worker_id}:ip")
     
     def get_worker_status_last_updated(self, chunk_id: str, worker_id: str):
-        return self.redis.get(f"ws:lu:{chunk_id}:{worker_id}")
+        return self.redis.get(f"ws:{chunk_id}:{worker_id}:lu")
     
     def set_worker_status_last_updated(self, chunk_id: str, worker_id: str):
-        self.redis.set(f"ws:lu:{chunk_id}:{worker_id}", time.time())
+        self.redis.set(f"ws:{chunk_id}:{worker_id}:lu", time.time())
 
     def remove_worker_status_last_updated(self, chunk_id: str, worker_id: str):
-        self.redis.delete(f"ws:lu:{chunk_id}:{worker_id}")
+        self.redis.delete(f"ws:{chunk_id}:{worker_id}:lu")
 
     def get_total_workers(self):
         count: int|None = self.redis.get("total_worker_count")
