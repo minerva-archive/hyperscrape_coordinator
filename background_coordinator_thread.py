@@ -1,6 +1,8 @@
 import state
 import time
 
+from state_db import db
+
 
 def background_coordinator():
     """!
@@ -23,4 +25,5 @@ def background_coordinator():
                 state.current_leaderboard.keys(),
                 key=lambda leaderboard_id: state.current_leaderboard[leaderboard_id].get_downloaded_bytes()
             )
-        time.sleep(1)
+        db.flush()
+        time.sleep(0.1)

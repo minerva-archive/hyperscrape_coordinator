@@ -1,3 +1,4 @@
+import queue
 from typing import Callable, Any
 import threading
 import sqlite3
@@ -20,6 +21,10 @@ class StateDB:
         self._write_conn = sqlite3.connect(db_path, check_same_thread=False)
         self._configure(self._write_conn)
         self._initialize_db()
+
+        # aaaaand the performance is not cutting it, still need to batch writes
+        self._write_queue = queue.Queue()
+
     
     def close(self):
         self._write_conn.close()
@@ -44,10 +49,23 @@ class StateDB:
         conn.row_factory = sqlite3.Row
 
 
-    def _write(self, fn: Callable[[sqlite3.Connection], Any]):
+    def _queue_write(self, query: str, params: tuple):
+        self._write_queue.put((query, params))
+
+
+    def flush(self):
+        ops = []
+        while True:
+            try:
+                ops.append(self._write_queue.get_nowait())
+            except queue.Empty:
+                break
+        if not ops:
+            return
         with self._write_lock:
             with self._write_conn:
-                return fn(self._write_conn)
+                for query, params in ops:
+                    self._write_conn.execute(query, params)
 
 
     def _initialize_db(self):
@@ -100,154 +118,102 @@ class StateDB:
     # file mutations
 
     def insert_file(self, file_id: str, path: str, size: int, url: str, chunk_size: int, complete: bool = False):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "INSERT INTO file (id, path, size, url, chunk_size, complete) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (file_id, path, size, url, chunk_size, complete)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "INSERT INTO file (id, path, size, url, chunk_size, complete) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (file_id, path, size, url, chunk_size, complete)
+        )
 
 
     def set_file_size(self, file_id: str, size: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE file SET size = ? WHERE id = ?",
-                    (size, file_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE file SET size = ? WHERE id = ?",
+            (size, file_id)
+        )
 
 
     def set_file_chunk_size(self, file_id: str, chunk_size: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE file SET chunk_size = ? WHERE id = ?",
-                    (chunk_size, file_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE file SET chunk_size = ? WHERE id = ?",
+            (chunk_size, file_id)
+        )
 
 
     def set_file_complete(self, file_id: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE file SET complete = 1 WHERE id = ?",
-                    (file_id,)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE file SET complete = 1 WHERE id = ?",
+            (file_id,)
+        )
 
     # chunk / worker mutations
 
 
     def insert_chunk(self, chunk_id: str, file_id: str, start: int, end: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "INSERT INTO chunk (id, file_id, start, end) "
-                    "VALUES (?, ?, ?, ?)",
-                    (chunk_id, file_id, start, end)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "INSERT INTO chunk (id, file_id, start, end) "
+            "VALUES (?, ?, ?, ?)",
+            (chunk_id, file_id, start, end)
+        )
 
 
     def delete_chunk(self, chunk_id: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "DELETE FROM chunk WHERE id = ?",
-                    (chunk_id,)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "DELETE FROM chunk WHERE id = ?",
+            (chunk_id,)
+        )
 
 
     def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str = "", hash_only: bool = True):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (chunk_id, worker_id, uploaded, hash, hash_only)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (chunk_id, worker_id, uploaded, hash, hash_only)
+        )
 
 
     def delete_worker_status(self, chunk_id: str, worker_id: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "DELETE FROM worker_status WHERE chunk_id = ? AND worker_id = ?",
-                    (chunk_id, worker_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "DELETE FROM worker_status WHERE chunk_id = ? AND worker_id = ?",
+            (chunk_id, worker_id)
+        )
     
 
-    def delete_chunk_worker_status(self, chunk_id: str, worker_id: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "DELETE FROM worker_status WHERE chunk_id = ?",
-                    (chunk_id, worker_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+    def delete_chunk_worker_status(self, chunk_id: str):
+        self._queue_write(
+            "DELETE FROM worker_status WHERE chunk_id = ?",
+            (chunk_id,)
+        )
 
 
     def set_worker_status_uploaded(self, chunk_id: str, worker_id: str, uploaded: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE worker_status SET uploaded = ? WHERE chunk_id = ? AND worker_id = ?",
-                    (uploaded, chunk_id, worker_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE worker_status SET uploaded = ? WHERE chunk_id = ? AND worker_id = ?",
+            (uploaded, chunk_id, worker_id)
+        )
 
 
     def set_worker_status_hash(self, chunk_id: str, worker_id: str, hash: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE worker_status SET hash = ? WHERE chunk_id = ? AND worker_id = ?",
-                    (hash, chunk_id, worker_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
-    
+        self._queue_write(
+            "UPDATE worker_status SET hash = ? WHERE chunk_id = ? AND worker_id = ?",
+            (hash, chunk_id, worker_id)
+        )
+
 
     def set_worker_status_hash_only(self, chunk_id: str, worker_id: str, hash_only: bool):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE worker_status SET hash_only = ? WHERE chunk_id = ? AND worker_id = ?",
-                    (hash_only, chunk_id, worker_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE worker_status SET hash_only = ? WHERE chunk_id = ? AND worker_id = ?",
+            (hash_only, chunk_id, worker_id)
+        )
 
 
     # file hash mutations
 
     def insert_file_hash(self, file_id: str, md5: str, sha1: str, sha256: str):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "INSERT INTO file_hash (file_id, md5, sha1, sha256) "
-                    "VALUES (?, ?, ?, ?)",
-                    (file_id, md5, sha1, sha256)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "INSERT INTO file_hash (file_id, md5, sha1, sha256) "
+            "VALUES (?, ?, ?, ?)",
+            (file_id, md5, sha1, sha256)
+        )
 
     # leaderboard mutations
 
@@ -257,39 +223,24 @@ class StateDB:
                                  avatar_url: str,
                                  downloaded_chunks: int = 0,
                                  downloaded_bytes: int = 0):
-        
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "INSERT INTO leaderboard (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes) "
-                    "VALUES (?, ?, ?, ?, ?) "
-                    "ON CONFLICT (discord_id) DO NOTHING",
-                    (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes)
-                )
-                return cur.fetchone()
-        return self._write(write)
-
+        self._queue_write(
+            "INSERT INTO leaderboard (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (discord_id) DO NOTHING",
+            (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes)
+        )
 
     def update_leaderboard_downloaded_bytes(self, discord_id: str, change: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE leaderboard SET downloaded_bytes = downloaded_bytes + ? WHERE discord_id = ?",
-                    (change, discord_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
-
+        self._queue_write(
+            "UPDATE leaderboard SET downloaded_bytes = downloaded_bytes + ? WHERE discord_id = ?",
+            (change, discord_id)
+        )
 
     def update_leaderboard_downloaded_chunks(self, discord_id: str, change: int):
-        def write(conn):
-            with conn:
-                cur = conn.execute(
-                    "UPDATE leaderboard SET downloaded_chunks = downloaded_chunks + ? WHERE discord_id = ?",
-                    (change, discord_id)
-                )
-                return cur.fetchone()
-        return self._write(write)
+        self._queue_write(
+            "UPDATE leaderboard SET downloaded_chunks = downloaded_chunks + ? WHERE discord_id = ?",
+            (change, discord_id)
+        )
 
 
 # global singleton and we'll just use the hardcoded filename here

@@ -1,5 +1,8 @@
 from uuid import uuid4
+
 import requests
+import xxhash
+
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 import state
 from workers import Worker
@@ -167,7 +170,6 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
     return WSMessage(WSMessageType.CHUNK_RESPONSE, response)
 
 
-
 def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     """!
     @brief Handle chunk upload requests
@@ -214,7 +216,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
             os.makedirs(os.path.dirname(chunk_path), exist_ok=True) # Create new handle otherwise
             worker.set_file_handle(chunk_id, open(chunk_path + ".partial", 'wb'))
             worker.set_file_path(chunk_id, chunk_path + ".partial")
-        worker.set_chunk_hash(chunk_id, hashlib.md5())
+        worker.set_chunk_hash(chunk_id, xxhash.xxh64())
     
     # If the file should be written to, then we should write to it :p
     if (not hash_only):
