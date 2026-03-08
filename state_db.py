@@ -132,9 +132,10 @@ class StateDBConnection(ContextDecorator):
 
     # Get objects
     async def get_stats(self) -> dict[str, DBStat]:
-        await self._cursor.execute("SELECT key, value FROM stat")
         records = {}
-        for record in self._cursor:
+        async for record in self._cursor.stream(
+            "SELECT key, value FROM stat"
+        ):
             records[record[0]] = DBStat(
                 record[0],
                 record[1]
@@ -173,9 +174,11 @@ class StateDBConnection(ContextDecorator):
         )
 
     async def get_chunks_for_file(self, file_id: str) -> list[DBChunk]:
-        await self._cursor.execute("SELECT id, file_id, range_start, range_end FROM chunk WHERE file_id = %s", (file_id,))
         records: list[DBChunk] = []
-        for record in self._cursor:
+        async for record in self._cursor.stream(
+            "SELECT id, file_id, range_start, range_end FROM chunk WHERE file_id = %s",
+            (file_id,)
+        ):
             records.append(DBChunk(
                 record[0],
                 record[1],
@@ -185,9 +188,11 @@ class StateDBConnection(ContextDecorator):
         return records
 
     async def get_chunk_worker_status(self, chunk_id: str) -> list[DBWorkerStatus]:
-        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only, last_updated FROM worker_status WHERE chunk_id = %s", (chunk_id,))
         records: list[DBWorkerStatus] = []
-        for record in self._cursor:
+        async for record in self._cursor.stream(
+            "SELECT chunk_id, worker_id, uploaded, hash, hash_only, last_updated FROM worker_status WHERE chunk_id = %s",
+            (chunk_id,)
+        ):
             records.append(DBWorkerStatus(
                 record[0],
                 record[1],
@@ -211,9 +216,10 @@ class StateDBConnection(ContextDecorator):
         )
 
     async def get_leaderboard(self) -> list[DBLeaderboardItem]:
-        await self._cursor.execute("SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard ORDER BY downloaded_bytes DESC")
         records: list[DBLeaderboardItem] = []
-        for record in self._cursor:
+        async for record in self._cursor.stream(
+            "SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard ORDER BY downloaded_bytes DESC"
+        ):
             records.append(DBLeaderboardItem(
                 record[0],
                 record[1],
