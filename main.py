@@ -223,6 +223,6 @@ if __name__ == "__main__":
     asyncio.run(state.main_initailise())
     central_thread_instance = Thread(target=central_thread)
     central_thread_instance.start()
-    uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=state.config["server"]["workers"], timeout_graceful_shutdown=30)
+    uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=state.config["server"]["workers"])
 else:
     print(f"Starting server as {__name__}")
