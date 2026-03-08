@@ -26,7 +26,7 @@ def background_coordinator():
     """
     last_stat_calc_time = time.time()
     last_uploaded = 0
-    while True:
+    while not state.shutting_down:
         current = time.time()
         asyncio.run(background_coordinator_async(current, last_uploaded, last_stat_calc_time))
         last_uploaded = state.uploaded_bytes

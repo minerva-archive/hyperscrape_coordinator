@@ -168,3 +168,11 @@ async def cleanup_chunk_workers(chunk_id: str) -> None:
 
 async def initialise():
     await db.open()
+
+async def main_initailise():
+    """!
+    @brief Initialisation but ONLY for the main thread
+    """
+    connection: StateDBConnection
+    async with db.get_connection() as connection:
+        await connection._cursor.execute("TRUNCATE worker_info")

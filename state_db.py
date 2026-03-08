@@ -239,6 +239,12 @@ class StateDBConnection(ContextDecorator):
             int(record[3]),
             int(record[4])
         )
+    
+    async def refresh_ordered_chunks(self):
+        """!
+        @brief WARN: This function takes a LONG time to run, often up to over a minute - It should be done as sparsely as possible!
+        """
+        await self._cursor.execute("REFRESH MATERIALIZED VIEW ordered_chunks")
         
     async def get_chunk_and_file_and_current_status(self, chunk_id: str, worker_id: str):
         await self._cursor.execute(

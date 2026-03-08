@@ -1,10 +1,12 @@
+from contextlib import asynccontextmanager
 from threading import Thread
 import asyncio
+import time
 
 from background_coordinator_thread import background_coordinator
 from fastapi.templating import Jinja2Templates
 from websockets import InvalidUpgrade
-from console import Console
+from central_thread import central_thread
 import requests
 import uvicorn
 import state
@@ -18,11 +20,6 @@ from workers import Worker
 
 import traceback
 
-print("=========================")
-print("=  HYPERSCRAPE SERVER   =")
-print("= Created By Hackerdude =")
-print("=========================")
-
 
 async def handler(websocket: WebSocket, ip_address: str):
     """!
@@ -32,7 +29,7 @@ async def handler(websocket: WebSocket, ip_address: str):
     @param ip_address (str): The IP address that this connection came from
     """
     worker: Worker = None
-    while True:
+    while not state.shutting_down:
         # If the server is shutting down we shouldn't accept new connections and should terminate existing ones
         if (state.shutting_down):
             try:
@@ -92,8 +89,18 @@ async def handler(websocket: WebSocket, ip_address: str):
             print(e)
             return
 
+# Background thread for occasional tasks
+background_thread = Thread(target=background_coordinator)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await state.initialise()
+    background_thread.start()
+    yield
+    state.shutting_down = True
+
 # FastAPI
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 
 @app.websocket("/worker")
@@ -205,17 +212,17 @@ async def slash_index(request: Request):
 async def html_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-# Setup state
-asyncio.run(state.initialise())
-
-# Background thread for occasional tasks
-background_thread = Thread(target=background_coordinator)
-background_thread.start()
-
-
-# Console setup
-console = Console()
-console.start()
-# Start the main app
+# If we are the main runner
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=state.config["server"]["port"], access_log=False)
+    print("=========================")
+    print("=  HYPERSCRAPE SERVER   =")
+    print("= Created By Hackerdude =")
+    print("=========================")
+
+    asyncio.run(state.initialise())
+    asyncio.run(state.main_initailise())
+    central_thread_instance = Thread(target=central_thread)
+    central_thread_instance.start()
+    uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=state.config["server"]["workers"], timeout_graceful_shutdown=30)
+else:
+    print(f"Starting server as {__name__}")
