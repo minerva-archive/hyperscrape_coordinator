@@ -3,3 +3,4 @@ requests
 fastapi[standard]
 websockets
 jinja2
+tqdm
