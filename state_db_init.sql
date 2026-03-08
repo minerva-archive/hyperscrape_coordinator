@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS stat
     value       BIGINT NOT NULL
 );
 
-INSERT INTO stat (key, value) VALUES ('downloaded_bytes', 0);
+INSERT INTO stat (key, value) VALUES ('downloaded_bytes', 0) ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS file
 (
