@@ -1,5 +1,6 @@
 [server]
 port = 8080
+trusted_proxies = [] # Optional list of trusted reverse-proxy IPs/CIDRs for X-Forwarded-For
 
 [general]
 version = 4 # The coordinator version

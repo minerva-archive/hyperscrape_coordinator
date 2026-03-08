@@ -1,5 +1,6 @@
 from threading import Thread
 import asyncio
+import ipaddress
 
 from background_coordinator_thread import background_coordinator
 from fastapi.templating import Jinja2Templates
@@ -21,6 +22,44 @@ print("=========================")
 print("=  HYPERSCRAPE SERVER   =")
 print("= Created By Hackerdude =")
 print("=========================")
+
+
+def _is_trusted_proxy(ip: str | None) -> bool:
+    if (not ip):
+        return False
+    trusted = state.config["server"].get("trusted_proxies", [])
+    if (not trusted):
+        return False
+    try:
+        peer = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entry in trusted:
+        try:
+            if "/" in entry:
+                if (peer in ipaddress.ip_network(entry, strict=False)):
+                    return True
+            elif (peer == ipaddress.ip_address(entry)):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _client_ip(websocket: WebSocket) -> str:
+    peer_ip = websocket.client.host if websocket.client else None
+    if (not _is_trusted_proxy(peer_ip)):
+        return peer_ip
+    xff = websocket.headers.get("x-forwarded-for", "")
+    if (not xff):
+        return peer_ip
+    for candidate in (part.strip() for part in xff.split(",")):
+        try:
+            ipaddress.ip_address(candidate)
+            return candidate
+        except ValueError:
+            continue
+    return peer_ip
 
 
 async def handler(websocket: WebSocket, ip_address: str):
@@ -115,7 +154,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
 
     await websocket.accept()
-    ip = websocket.headers.get("x-forwarded-for", websocket.client.host)
+    ip = _client_ip(websocket)
     await handler(websocket, ip)
     try:
         await websocket.close()
