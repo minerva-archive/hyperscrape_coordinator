@@ -1,6 +1,7 @@
+fastapi[standard]
 msgspec
 requests
-fastapi[standard]
 websockets
+psycopg[pool]
 jinja2
 tqdm
