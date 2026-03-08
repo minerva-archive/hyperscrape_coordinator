@@ -57,4 +57,18 @@ CREATE TABLE IF NOT EXISTS leaderboard
     downloaded_chunks BIGINT NOT NULL DEFAULT 0,
     downloaded_bytes  BIGINT NOT NULL DEFAULT 0
 );
+
+-- Create a materialized view that is an ordered list of chunks
+CREATE MATERIALIZED VIEW IF NOT EXISTS ordered_chunks AS -- Create the view...
+SELECT file.id AS file_id, file.size AS file_size, file.url AS file_url, -- Get file info
+chunk.id AS chunk_id, chunk.range_start AS chunk_range_start, chunk.range_end AS chunk_range_end, -- Get chunk info
+COUNT(worker_status.worker_id) AS assigned_workers -- Get number of workers assigned per chunk
+FROM file -- From file...
+JOIN chunk ON chunk.file_id=file.id -- Join the chunks
+LEFT JOIN worker_status ON worker_status.chunk_id=chunk.id -- Join the workers
+WHERE (NOT file.complete) -- Don't include completed files
+AND (file.size IS NOT NULL AND file.size != 0) -- Only files with valid sizes
+GROUP BY file.id, chunk.id -- We want individual chunk instances
+ORDER BY COUNT(worker_status.worker_id) DESC; -- Order it!
+
 COMMIT;

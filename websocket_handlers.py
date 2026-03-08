@@ -73,6 +73,8 @@ async def get_chunks(worker: Worker, data: dict) -> WSMessage:
 
     total, used, free = shutil.disk_usage(state.config["paths"]["chunk_temp_path"]) # Get storage path stats
     num_chunks_to_get = int(data["count"])
+    if (num_chunks_to_get > 10000 or num_chunks_to_get < 0):
+        num_chunks_to_get = 100
 
     # Get files with high worker counts
     # So the entire network is working together for a single file essenially
@@ -80,33 +82,42 @@ async def get_chunks(worker: Worker, data: dict) -> WSMessage:
     async with state.db.get_connection() as connection:
         response = {}
         chunks = await connection.get_ordered_downloadable_files(
-                    num_chunks_to_get,
-                    state.config["general"]["trust_count"],
-                    worker.get_id(),
-                    worker.get_ip()
-                )
+            num_chunks_to_get,
+            0,
+            state.config["general"]["trust_count"],
+            worker.get_id(),
+            worker.get_ip(),
+            free
+        )
         
         for downloadable_chunk in chunks:
-            print(downloadable_chunk)
-
-            if (downloadable_chunk["file_size"] > free):
+            file_id = downloadable_chunk[0]
+            file_size = downloadable_chunk[1]
+            file_url = downloadable_chunk[2]
+            chunk_id = downloadable_chunk[3]
+            chunk_range_start = downloadable_chunk[4]
+            chunk_range_end = downloadable_chunk[5]
+            hash_only = downloadable_chunk[6]
+            
+            chunk_size = chunk_range_end - chunk_range_start
+            if (chunk_size > free):
                 break
-            free -= downloadable_chunk["file_size"]
+            free -= chunk_size
 
             connection.insert_worker_status( # @TODO: Batch insert!
-                downloadable_chunk["chunk_id"],
+                chunk_id,
                 worker.get_id(),
                 0,
                 None,
-                not downloadable_chunk["hash_only"] # If the entire chunk is hash only, we should make this worker NOT hash only
+                not hash_only # If the entire chunk is hash only, we should make this worker NOT hash only
             )
             
-            response[downloadable_chunk["chunk_id"]] = {
-                "file_id": downloadable_chunk["file_id"],
-                "url": downloadable_chunk["file_url"],
+            response[chunk_id] = {
+                "file_id": file_id,
+                "url": file_url,
                 "range": [
-                    downloadable_chunk["chunk_range_start"],
-                    downloadable_chunk["chunk_range_end"]
+                    chunk_range_start,
+                    chunk_range_end
                 ]
             }
                 

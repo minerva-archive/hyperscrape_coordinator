@@ -87,10 +87,10 @@ async def handler(websocket: WebSocket, ip_address: str):
         except Exception as e:
             if (worker):
                 print(f"Disconnecting worker {worker.get_id()} due to exception.")
-                print(e)
-                traceback.print_exc()
                 await state.remove_worker(worker.get_id())
-                return
+            traceback.print_exc()
+            print(e)
+            return
 
 # FastAPI
 app = FastAPI()

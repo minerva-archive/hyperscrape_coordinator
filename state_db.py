@@ -296,23 +296,32 @@ class StateDBConnection(ContextDecorator):
     # Ordered getter
     async def get_ordered_downloadable_files(self, limit: int, offset: int, worker_limit: int, current_worker_id: str, current_worker_ip: str, free_space: int):
         await self._cursor.execute(
-            "SELECT * FROM ("
-                "SELECT file.id, file.size, file.url, " # Select file properties
-                "chunk.id, chunk.range_start, chunk.range_end " # Select chunk properties
-                "COUNT(worker_id) " # Count assigned workers
-                "FROM file " # FROM file
-                "JOIN chunk ON chunk.file_id=file.id " # Join chunks to files
-                "JOIN worker_status ON worker_status.chunk_id=chunk.id " # Join worker statuses to files
-                "JOIN worker_info ON worker_info.id=worker_status.worker_id " # Join worker info (for IP filtering)
-                "WHERE (NOT file.complete) " # Only in-progress files
-                "AND (file.size IS NOT NULL AND file.size != 0 AND file.size < %s) " # Only with a defined size that is less than free space
-                "AND worker_status.worker_id != %s AND worker_info.ip != %s " # Where the worker isn't us
-                "GROUP BY chunk.id ORDER BY COUNT(worker_id)" # Get the chunks from most workers to least
-            ") "
-            "JOIN (SELECT 1 WHERE EXISTS (SELECT 1 FROM worker_status WHERE worker_status.chunk_id=chunk_id AND NOT hash_only)) as hash_only "
-            "WHERE assigned_workers < %s " # Get only with workers less than the limit
-            "LIMIT %s OFFSET %s", # So we can "stream" it
-            (free_space, current_worker_id, current_worker_ip, worker_limit, limit, offset)
+            "SELECT file_id, file_size, file_url, "
+            "ordered_chunks.chunk_id, chunk_range_start, chunk_range_end, "
+            "assigned_workers, "
+            "NOT EXISTS ("
+                "SELECT hash_only "
+                "FROM worker_status "
+                "WHERE worker_status.chunk_id=ordered_chunks.chunk_id "
+                "AND NOT worker_status.hash_only"
+            ") AS hash_only "
+            "FROM ordered_chunks "
+            "WHERE assigned_workers < %s "
+            "AND file_size < %s "
+            "AND NOT EXISTS ( "
+                "SELECT worker_id "
+                "FROM worker_status "
+                "LEFT JOIN worker_info ON worker_info.id=worker_status.worker_id "
+                "WHERE worker_status.chunk_id=ordered_chunks.chunk_id "
+                "AND "
+                "("
+                    "worker_info.id=%s "
+                    "OR "
+                    "worker_info.ip=%s"
+                ")"
+            ")"
+            "LIMIT %s;",
+            (worker_limit, free_space, current_worker_id, current_worker_ip, limit)
         )
         return await self._cursor.fetchall()
         
