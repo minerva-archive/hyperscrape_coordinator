@@ -24,6 +24,7 @@ def background_coordinator():
             state.current_leaderboard_order = sorted(
                 state.current_leaderboard.keys(),
                 key=lambda leaderboard_id: state.current_leaderboard[leaderboard_id].get_downloaded_bytes()
+                reverse=True
             )
         db.flush()
         time.sleep(0.1)

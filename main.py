@@ -160,7 +160,7 @@ def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
     """
 
     response = []
-    for leaderboard_id in state.current_leaderboard_order[offset:limit]:
+    for leaderboard_id in state.current_leaderboard_order[offset:offset+limit]:
         leaderboard_object = state.current_leaderboard[leaderboard_id]
         response.append({
             "discord_username": leaderboard_object.get_discord_username(),
