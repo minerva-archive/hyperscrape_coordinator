@@ -18,6 +18,7 @@ async def background_coordinator_async(current, last_uploaded, last_stat_calc_ti
             state.completed_bytes = await connection.get_completed_bytes()
             state.total_bytes = await connection.get_total_bytes()
             state.current_speed = (state.uploaded_bytes - last_uploaded)/(current - last_stat_calc_time)
+            state.total_workers = await connection.get_total_workers()
 
 def background_coordinator():
     """!

@@ -126,7 +126,7 @@ async def get_stats() -> dict:
         "completed_chunks": state.completed_chunk_count,
         "assigned": state.assigned_chunk_count,
         "pending": state.total_file_count - state.completed_file_count,
-        "active_workers": state.redis.get_total_workers(),
+        "active_workers": state.total_workers,
         "uploaded_bytes": state.uploaded_bytes,
         "completed_bytes": state.completed_bytes,
         "total_bytes": state.total_bytes,

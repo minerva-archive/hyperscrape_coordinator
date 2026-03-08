@@ -1,4 +1,5 @@
 from contextlib import ContextDecorator
+from datetime import datetime
 from typing import Self
 from psycopg import AsyncConnection
 import psycopg_pool
@@ -25,12 +26,13 @@ class DBChunk():
         self.range_end = range_end
 
 class DBWorkerStatus():
-    def __init__(self, chunk_id: str, worker_id: str, uploaded: int, hash: str|None, hash_only: bool):
+    def __init__(self, chunk_id: str, worker_id: str, uploaded: int, hash: str|None, hash_only: bool, last_updated: datetime):
         self.chunk_id = chunk_id
         self.worker_id = worker_id
         self.uploaded = uploaded
         self.hash = hash
         self.hash_only = hash_only
+        self.last_updated = last_updated
 
 class DBFileHash():
     def __init__(self, file_id: str, md5: str, sha1: str, sha256: str):
@@ -99,6 +101,10 @@ class StateDBConnection(ContextDecorator):
     
     async def get_completed_file_count(self) -> int:
         await self._cursor.execute("SELECT COUNT(*) as count FROM file WHERE complete")
+        return int((await self._cursor.fetchone())[0])
+    
+    async def get_total_workers(self) -> int:
+        await self._cursor.execute("SELECT COUNT(*) as count FROM worker_info")
         return int((await self._cursor.fetchone())[0])
         
     async def get_completed_chunk_count(self) -> int:
@@ -179,7 +185,7 @@ class StateDBConnection(ContextDecorator):
         return records
 
     async def get_chunk_worker_status(self, chunk_id: str) -> list[DBWorkerStatus]:
-        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only FROM worker_status WHERE chunk_id = %s", (chunk_id,))
+        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only, last_updated FROM worker_status WHERE chunk_id = %s", (chunk_id,))
         records: list[DBWorkerStatus] = []
         for record in self._cursor:
             records.append(DBWorkerStatus(
@@ -187,19 +193,21 @@ class StateDBConnection(ContextDecorator):
                 record[1],
                 int(record[2]),
                 record[3],
-                record[4]
+                record[4],
+                records[5]
             ))
         return records
         
     async def get_worker_status(self, chunk_id: str, worker_id: str) -> DBWorkerStatus:
-        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only FROM worker_status WHERE chunk_id = %s AND worker_id = %s", (chunk_id, worker_id,))
+        await self._cursor.execute("SELECT chunk_id, worker_id, uploaded, hash, hash_only, last_updated FROM worker_status WHERE chunk_id = %s AND worker_id = %s", (chunk_id, worker_id,))
         record = await self._cursor.fetchone()
         return DBWorkerStatus(
             record[0],
             record[1],
             int(record[2]),
             record[3],
-            record[4]
+            record[4],
+            record[5]
         )
 
     async def get_leaderboard(self) -> list[DBLeaderboardItem]:
@@ -230,7 +238,7 @@ class StateDBConnection(ContextDecorator):
         await self._cursor.execute(
             "SELECT chunk.id, chunk.range_start, chunk.range_end "
             "file.id, file.path, file.size, file.url, file.chunk_size, file.complete "
-            "worker_status.worker_id, worker_status.uploaded, worker_status.hash, worker_status.hash_only "
+            "worker_status.worker_id, worker_status.uploaded, worker_status.hash, worker_status.hash_only, worker_status.last_updated "
             "FROM chunk "
             "JOIN file ON file.id=chunk.file_id "
             "JOIN worker_status ON worker_status.chunk_id=chunk.id "
@@ -261,12 +269,20 @@ class StateDBConnection(ContextDecorator):
                 record[9],
                 int(record[10]),
                 record[11],
-                record[12]
+                record[12],
+                record[13]
             )
         )
             
         
     # Worker handling
+    async def add_worker(self, id: str, discord_id: str, ip: str):
+        await self._cursor.execute(
+            "INSERT INTO worker_info (id, discord_id, ip) "
+            "VALUES (%s, %s, %s)",
+            (id, discord_id, ip)
+        )
+
     async def remove_worker(self, worker_id: str):
         await self._cursor.execute("DELETE FROM worker_info WHERE id = %s", (worker_id,))
         await self._cursor.execute("DELETE FROM worker_status WHERE hash IS NULL AND worker_id = %s", (worker_id, ))
@@ -352,9 +368,9 @@ class StateDBConnection(ContextDecorator):
 
     async def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str|None = None, hash_only: bool = True):
         await self._cursor.execute(
-            "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (chunk_id, worker_id, uploaded, hash, hash_only)
+            "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only, last_updated) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (chunk_id, worker_id, uploaded, hash, hash_only, datetime.now())
         )
 
     async def delete_worker_status(self, chunk_id: str, worker_id: str):
@@ -392,6 +408,12 @@ class StateDBConnection(ContextDecorator):
         await self._cursor.execute(
             "UPDATE worker_status SET hash_only = %s WHERE chunk_id = %s AND worker_id = %s",
             (hash_only, chunk_id, worker_id)
+        )
+
+    async def update_worker_status_last_updated(self, chunk_id: str, worker_id: str):
+        await self._cursor.execute(
+            "UPDATE worker_status SET last_updated = %s WHERE chunk_id = %s AND worker_id = %s",
+            (datetime.now(), chunk_id, worker_id)
         )
 
 

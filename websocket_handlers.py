@@ -50,10 +50,10 @@ async def register_worker(ip: str, data: dict) -> WSMessage:
     worker_id = str(uuid4())
     with state.workers_lock:
         state.local_workers[worker_id] = Worker(worker_id, ip, data["max_concurrent"], discord_id)
-    state.redis.add_worker(state.local_workers[worker_id]) # Add worker to the count
     connection: StateDBConnection
     async with state.db.get_connection() as connection:
         await connection.insert_leaderboard_entry(discord_id, discord_username, avatar_url)
+        await connection.add_worker(worker_id, discord_id, ip)
 
     return WSMessage(WSMessageType.REGISTER_RESPONSE, {
         "worker_id": worker_id,
@@ -163,13 +163,13 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     worker.get_chunk_hash(chunk_id).update(data["payload"])
     
     # Update status
-    if (worker_status.hash_only):
-        async with state.db.get_connection() as connection:
-            await connection.change_worker_status_uploaded(chunk.id, worker.get_id(), len(data["payload"]))
-    else:
-        # We prefer this for more robust upload detection when possible (ie: when it's actually downloading the file)
-        async with state.db.get_connection() as connection:
-            await connection.set_worker_status_uploaded(chunk.id, worker.get_id(), worker.get_file_handle(chunk_id).tell())
+    async with state.db.get_connection() as connection:
+        if (worker_status.hash_only):
+                await connection.change_worker_status_uploaded(chunk.id, worker.get_id(), len(data["payload"]))
+        else:
+                # We prefer this for more robust upload detection when possible (ie: when it's actually downloading the file)
+                await connection.set_worker_status_uploaded(chunk.id, worker.get_id(), worker.get_file_handle(chunk_id).tell())
+        await connection.update_worker_status_last_updated(chunk.id, worker.get_id())
     del data["payload"] # Reduce memory consumption as we don't read the payload anymore
 
     # Check if the chunk instance is NOT complete

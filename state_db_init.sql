@@ -36,8 +36,9 @@ CREATE TABLE IF NOT EXISTS worker_status
 
 CREATE TABLE IF NOT EXISTS worker_info
 (
-    id       TEXT PRIMARY KEY NOT NULL,
-    ip       TEXT NOT NULL
+    id          TEXT PRIMARY KEY NOT NULL,
+    discord_id  TEXT NOT NULL,
+    ip          TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS file_hash

@@ -3,7 +3,6 @@
 ###
 import asyncio
 from threading import Lock
-from redis_db import RedisDB
 from workers import Worker
 from msgspec import json
 from state_db import StateDB, StateDBConnection
@@ -45,6 +44,7 @@ global uploaded_bytes
 global completed_bytes
 global total_bytes
 global current_speed
+global total_workers
 total_file_count = 0
 total_chunk_count = 0
 completed_file_count = 0
@@ -54,6 +54,7 @@ uploaded_bytes = 0
 completed_bytes = 0
 total_bytes = 0
 current_speed = 0
+total_workers = 0
 
 ###
 # Config + Secrets loading
@@ -75,9 +76,6 @@ with open("./secrets.toml", 'rb') as file:
 ###
 global db
 db: StateDB = StateDB(config["database"]["psql_connstring"])
-
-global redis
-redis: RedisDB = RedisDB(config["database"]["redis_host"], config["database"]["redis_port"], config["database"]["redis_db"])
 
 # Workers
 async def remove_worker(worker_id: str) -> None:
@@ -108,7 +106,6 @@ async def remove_worker(worker_id: str) -> None:
             worker.remove_chunk_hash(chunk_id)
 
         # Cleanup databases
-        redis.remove_worker(worker_id)
         connection: StateDBConnection
         async with db.get_connection() as connection:
             await connection.remove_worker(worker.get_id())
@@ -156,7 +153,7 @@ async def cleanup_chunk_workers(chunk_id: str) -> None:
             if (
                 not worker_status.hash and # Only remove incomplete chunks
                 (
-                    time.time() - redis.get_worker_status_last_updated(chunk_id, worker_status.worker_id) > config["general"]["worker_timeout"] # Or it timed out
+                    time.time() - worker_status.last_updated > config["general"]["worker_timeout"] # Or it timed out
                 )
             ):
                 # Cleanup worker info
@@ -167,7 +164,6 @@ async def cleanup_chunk_workers(chunk_id: str) -> None:
                         local_workers[worker_status.worker_id].remove_file_path(chunk_id)
                     local_workers[worker_status.worker_id].remove_chunk_hash(chunk_id)
                 # Remove status info
-                redis.remove_worker_status_last_updated(chunk_id, worker_status.worker_id)
                 connection.delete_worker_status(chunk_id, worker_status.worker_id)
 
 async def initialise():
