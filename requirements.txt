@@ -4,4 +4,6 @@ requests
 websockets
 psycopg[pool]
 jinja2
+xxhash
+redis
 tqdm
