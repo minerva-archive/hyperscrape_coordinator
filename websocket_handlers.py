@@ -3,7 +3,7 @@ from uuid import uuid4
 import requests
 import xxhash
 
-from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
+from helpers import get_chunk_instance_temp_path, get_chunk_path, get_storage_file_path, get_url_size
 import state
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
@@ -203,7 +203,10 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     chunk_file_object = state.files[file_id] # Get the file
     hash_only = chunk.get_worker_hash_only(worker.get_id()) # Get if the chunk is only a hash (so no file download)
     # Get folders
-    chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker.get_id())
+    try:
+        chunk_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker.get_id())
+    except ValueError:
+        return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unsafe file path", "chunk_id": chunk_id})
     
     # Ensure the chunk_id is from the file specified by file_id
     if (not chunk_file_object.has_chunk(chunk_id)):
@@ -315,7 +318,10 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
     # Check if all the other chunks are also completed
     with chunk_file_object.get_lock():
-        destination_path = os.path.join(state.config["paths"]["storage_path"], chunk_file_object.get_path())
+        try:
+            destination_path = get_storage_file_path(chunk_file_object.get_id())
+        except ValueError:
+            return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Unsafe file path", "chunk_id": chunk_id})
         if (os.path.exists(destination_path)):
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload entire file complete!", "chunk_id": chunk_id})
         
@@ -382,7 +388,8 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
         )
 
         # Delete the folder that stored the chunks
-        temp_storage_folder = os.path.join(state.config["paths"]["chunk_temp_path"], chunk_file_object.get_path())
+        first_chunk_id = next(iter(chunk_file_object.get_chunks()))
+        temp_storage_folder = os.path.dirname(get_chunk_path(chunk_file_object.get_id(), first_chunk_id))
         shutil.rmtree(temp_storage_folder, ignore_errors=True)
         chunk_file_object.mark_complete() # Mark file itself as actually complete
         ## # We can delete the chunks of a complete file as they will no longer be needed
