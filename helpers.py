@@ -1,6 +1,6 @@
 import requests
-import os
 import state
+import os
 
 
 def get_url_size(url: str) -> int|None:

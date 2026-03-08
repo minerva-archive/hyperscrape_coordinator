@@ -61,19 +61,19 @@ async def handler(websocket: WebSocket, ip_address: str):
 
             # Handle the message
             if (message.get_type() == WSMessageType.REGISTER):
-                response = register_worker(ip_address, message.get_payload())
+                response = await register_worker(ip_address, message.get_payload())
                 if (not response.get_payload().get("worker_id", None)):
                     await websocket.send_bytes(response.encode())
                     await websocket.close()
                     raise Exception("Bad worker register message")
-                worker = state.workers[response.get_payload()["worker_id"]]
+                worker = state.local_workers[response.get_payload()["worker_id"]]
                 worker.set_websocket(websocket)
             elif (message.get_type() == WSMessageType.GET_CHUNKS):
-                response = await asyncio.to_thread(get_chunks, worker, message.get_payload())
+                response = await get_chunks(worker, message.get_payload())
             elif (message.get_type() == WSMessageType.UPLOAD_SUBCHUNK):
-                response = await asyncio.to_thread(upload_chunk, worker, message.get_payload())
+                response = await upload_chunk(worker, message.get_payload())
             elif (message.get_type() == WSMessageType.DETACH_CHUNK):
-                response = await asyncio.to_thread(detach_chunk, worker, message.get_payload())
+                response = await detach_chunk(worker, message.get_payload())
 
             # Send a response
             await websocket.send_bytes(response.encode())
@@ -91,6 +91,7 @@ async def handler(websocket: WebSocket, ip_address: str):
                 traceback.print_exc()
                 await state.remove_worker(worker.get_id())
                 return
+
 
 
 # Background thread for occasional tasks

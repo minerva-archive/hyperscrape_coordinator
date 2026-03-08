@@ -1,5 +1,3 @@
-from files import HyperscrapeFile
-from state_db import db
 from uuid import uuid4
 from tqdm import tqdm
 import argparse

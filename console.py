@@ -1,7 +1,6 @@
 import signal
 from threading import Thread
 from typing import Callable
-from state_db import db
 import asyncio
 import time
 import state
