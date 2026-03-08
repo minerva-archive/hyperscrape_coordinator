@@ -138,8 +138,8 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     if (chunk == None or chunk_file_object == None or worker_status == None):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
 
-    # Ensure the chunk and exists
-    if (chunk.):
+    # Ensure the chunk instance is not complete
+    if (worker_status.hash):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Chunk already complete", "chunk_id": chunk_id})
     
     # Get folders
@@ -309,7 +309,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
 
 
-def detach_chunk(worker: Worker, data: dict) -> WSMessage:
+async def detach_chunk(worker: Worker, data: dict) -> WSMessage:
     """!
     @brief Detach a worker from a chunk instance, informs the coordinator it should reassign that chunk instance
 
@@ -323,20 +323,21 @@ def detach_chunk(worker: Worker, data: dict) -> WSMessage:
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
     
     chunk_id = data["chunk_id"]
-    if (not chunk_id in state.chunks):
+    connection: StateDBConnection
+    async with state.db.get_connection() as connection:
+        chunk = await connection.get_chunk(chunk_id)
+    if (not chunk):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "No such chunk"})
     
-    with state.chunks[chunk_id].get_lock():
-        # Close the file handles and cleanup worker state info if applicable
-        if (chunk_id in worker.get_file_handles()):
-            worker.close_file_handle(chunk_id)
-            os.remove(worker.get_file_path(chunk_id))
-            worker.remove_file_path(chunk_id)
-            worker.remove_chunk_hash(chunk_id)
+    # Close the file handles and cleanup worker state info if applicable
+    if (chunk_id in worker.get_file_handles()):
+        worker.close_file_handle(chunk_id)
+        os.remove(worker.get_file_path(chunk_id))
+        worker.remove_file_path(chunk_id)
+        worker.remove_chunk_hash(chunk_id)
 
-        # Remove the worker status from the chunk
-        # This lets the coordinator know that a "slot" has openned up for another worker to take its place
-        if (state.chunks[chunk_id].has_worker(worker.get_id())):
-            state.chunks[chunk_id].remove_worker_status(worker.get_id())
-            state.assigned_chunks -= 1
+    # Remove the worker status from the chunk
+    # This lets the coordinator know that a "slot" has openned up for another worker to take its place
+    async with state.db.get_connection() as connection:
+        await connection.delete_worker_status(chunk_id, worker.get_id())
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})

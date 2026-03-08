@@ -73,9 +73,11 @@ class StateDBConnection(ContextDecorator):
 
     async def __enter__(self) -> Self:
         self.connection = await self.stateDB.get_connection()
+        self.connection.execute("BEGIN")
         return self
 
     async def __exit__(self) -> Self:
+        self.connection.execute("COMMIT")
         self.connection.close()
         return self
     
