@@ -44,10 +44,12 @@ global workers_lock
 global files_lock
 global chunks_lock
 global hashes_lock
+global stats_lock
 workers_lock = Lock()
 files_lock = Lock()
 chunks_lock = Lock()
 hashes_lock = Lock()
+stats_lock = Lock()
 
 ###
 # Handles storing stats and all that
@@ -70,6 +72,78 @@ downloaded_bytes = 0
 completed_bytes = 0
 total_bytes = 0
 current_speed = 0
+
+
+def add_assigned_chunks(change: int):
+    global assigned_chunks
+    with stats_lock:
+        assigned_chunks = max(0, assigned_chunks + change)
+        return assigned_chunks
+
+
+def add_completed_chunks(change: int):
+    global completed_chunks
+    with stats_lock:
+        completed_chunks = max(0, completed_chunks + change)
+        return completed_chunks
+
+
+def add_failed_chunks(change: int):
+    global failed_chunks
+    with stats_lock:
+        failed_chunks = max(0, failed_chunks + change)
+        return failed_chunks
+
+
+def add_downloaded_bytes(change: int):
+    global downloaded_bytes
+    with stats_lock:
+        downloaded_bytes = max(0, downloaded_bytes + change)
+        return downloaded_bytes
+
+
+def add_completed_bytes(change: int):
+    global completed_bytes
+    with stats_lock:
+        completed_bytes = max(0, completed_bytes + change)
+        return completed_bytes
+
+
+def add_completed_files(change: int):
+    global completed_files
+    with stats_lock:
+        completed_files = max(0, completed_files + change)
+        return completed_files
+
+
+def get_downloaded_bytes():
+    with stats_lock:
+        return downloaded_bytes
+
+
+def get_assigned_chunks():
+    with stats_lock:
+        return assigned_chunks
+
+
+def set_current_speed(speed: float):
+    global current_speed
+    with stats_lock:
+        current_speed = speed
+
+
+def get_stats_snapshot():
+    with stats_lock:
+        return {
+            "completed_files": completed_files,
+            "completed_chunks": completed_chunks,
+            "assigned": assigned_chunks,
+            "failed": failed_chunks,
+            "downloaded_bytes": downloaded_bytes,
+            "completed_bytes": completed_bytes,
+            "total_bytes": total_bytes,
+            "current_speed": current_speed,
+        }
 
 class LeaderboardObject():
     def __init__(self,
@@ -190,7 +264,7 @@ async def remove_worker(worker_id: str) -> None:
             worker.remove_chunk_hash(chunk_id)
             if (chunk_id in chunks):
                 chunks[chunk_id].remove_worker_status(worker.get_id())
-                assigned_chunks = max(0, assigned_chunks - 1)
+                add_assigned_chunks(-1)
 
     with workers_lock:
         workers.pop(worker_id, None)
@@ -353,9 +427,9 @@ def load_state():
                         generated_chunks += 1
 
             if (file.get_complete()):
-                completed_files += 1
-                completed_bytes += file.get_total_size() * config["general"]["trust_count"]
-                completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
+                add_completed_files(1)
+                add_completed_bytes(file.get_total_size() * config["general"]["trust_count"])
+                add_completed_chunks(math.ceil(file.get_total_size() / files[file_id].get_chunk_size()))
             else:
                 file_worker_counts[file_id] = 0
                 sorted_downloadable_files.append(file_id)
@@ -364,10 +438,10 @@ def load_state():
                     for worker_id in chunks[chunk_id].get_workers():
                         file_worker_counts[file_id] += 1
                         if (chunks[chunk_id].get_worker_complete(worker_id)):
-                            completed_chunks += 1
-                            downloaded_bytes += chunks[chunk_id].get_end() - chunks[chunk_id].get_start()
+                            add_completed_chunks(1)
+                            add_downloaded_bytes(chunks[chunk_id].get_end() - chunks[chunk_id].get_start())
                         else:
-                            assigned_chunks += 1
+                            add_assigned_chunks(1)
         if (generated_chunks > 0):
             print(f"NOTE: Generated {generated_chunks} new chunks!")
         print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")

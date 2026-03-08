@@ -9,14 +9,15 @@ def background_coordinator():
     @brief Thread that runs in the background, handles current speed calculation
     """
     last_stat_calc_time = time.time()
-    last_downloaded = state.downloaded_bytes
+    last_downloaded = state.get_downloaded_bytes()
     while True:
         current = time.time()
 
         # Calculate current upload speed
         if (current - last_stat_calc_time > 1):
-            state.current_speed = (state.downloaded_bytes - last_downloaded)/(current - last_stat_calc_time)
-            last_downloaded = state.downloaded_bytes
+            downloaded_now = state.get_downloaded_bytes()
+            state.set_current_speed((downloaded_now - last_downloaded)/(current - last_stat_calc_time))
+            last_downloaded = downloaded_now
             last_stat_calc_time = current
 
         # Sort the leaderboard
