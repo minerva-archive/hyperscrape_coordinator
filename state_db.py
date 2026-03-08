@@ -1,6 +1,50 @@
 from psycopg import AsyncConnection
 import psycopg_pool
 
+class DBStat():
+    def __init__(self, key: str, value: str):
+        self.key = key
+        self.value = value
+
+class DBFile():
+    def __init__(self, id: str, path: str, size: int, url: str, chunk_size: int, complete: bool):
+        self.id = id
+        self.path = path
+        self.size = size
+        self.url = url
+        self.chunk_size = chunk_size
+        self.complete = complete
+
+class DBChunk():
+    def __init__(self, id: str, file_id: str, start: int, end: int):
+        self.id = id
+        self.file_id = file_id
+        self.start = start
+        self.end = end
+
+class DBWorkerStatus():
+    def __init__(self, chunk_id: str, worker_id: str, uploaded: int, hash: str|None, hash_only: bool):
+        self.chunk_id = chunk_id
+        self.worker_id = worker_id
+        self.uploaded = uploaded
+        self.hash = hash
+        self.hash_only = hash_only
+
+class DBFileHash():
+    def __init__(self, file_id: str, md5: str, sha1: str, sha256: str):
+        self.file_id = file_id
+        self.md5 = md5
+        self.sha1 = sha1
+        self.sha256 = sha256
+
+class DBLeaderboardItem():
+    def __init__(self, discord_id: str, discord_username: str, avatar_url: str|None, downloaded_chunks: int, downloaded_bytes: int):
+        self.discord_id = discord_id
+        self.discord_username = discord_username
+        self.avatar_url = avatar_url
+        self.downloaded_chunks = downloaded_chunks
+        self.downloaded_bytes = downloaded_bytes
+
 class StateDB:
     """!
     @brief The state's database storage system
@@ -27,45 +71,91 @@ class StateDBConnection:
         self.connection.close()
 
     # Get objects
-    async def get_files(self) -> list[dict]:
+    async def get_stats(self) -> dict[str, DBStat]:
         async with self.connection.cursor() as cur:
-            await cur.execute("SELECT * FROM file")
-            return await cur.fetchall()
+            await cur.execute("SELECT * FROM stat")
+            records = {}
+            for record in cur:
+                records[record["key"]] = DBStat(
+                    record["key"],
+                    record["value"]
+                )
+            return records
         
-    async def get_file(self, file_id: str) -> dict:
+    async def get_file(self, file_id: str) -> DBFile:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM file WHERE id = $1", (file_id,))
-            return await cur.fetchone()
-
-    async def get_chunks(self) -> list[dict]:
-        async with self.connection.cursor() as cur:
-            await cur.execute("SELECT * FROM chunk")
-            return await cur.fetchall()
+            record = await cur.fetchone()
+            return DBFile(
+                record["id"],
+                record["path"],
+                record["size"],
+                record["url"],
+                record["chunk_size"],
+                record["complete"]
+            )
         
-    async def get_chunk(self, chunk_id: str) -> dict:
+    async def get_chunk(self, chunk_id: str) -> DBChunk:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM chunk WHERE id = $1", (chunk_id,))
-            return await cur.fetchone()
+            record = await cur.fetchone()
+            return DBChunk(
+                record["id"],
+                record["file_id"],
+                record["start"],
+                record["end"]
+            )
 
-    async def get_chunks_for_file(self, file_id: str) -> list[dict]:
+    async def get_chunks_for_file(self, file_id: str) -> list[DBChunk]:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM chunk WHERE file_id = $1", (file_id,))
-            return await cur.fetchall()
+            records: list[DBChunk] = []
+            for record in cur:
+                records.append(DBChunk(
+                    record["id"],
+                    record["file_id"],
+                    record["start"],
+                    record["end"]
+                ))
+            return records
 
-    async def get_chunk_worker_status(self, chunk_id: str) -> list[dict]:
+    async def get_chunk_worker_status(self, chunk_id: str) -> list[DBWorkerStatus]:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM worker_status WHERE chunk_id = $1", (chunk_id,))
-            return await cur.fetchall()
+            records: list[DBWorkerStatus] = []
+            for record in cur:
+                records.append(DBWorkerStatus(
+                    record["chunk_id"],
+                    record["worker_id"],
+                    record["uploaded"],
+                    record["hash"],
+                    record["hash_only"]
+                ))
+            return records
 
-    async def get_file_hashes(self):
-        async with self.connection.cursor() as cur:
-            await cur.execute("SELECT path, md5, sha1, sha256 FROM file_hash JOIN file on file.id = file_hash.file_id")
-            return await cur.fetchall()
-
-    async def get_leaderboard(self):
+    async def get_leaderboard(self) -> list[DBLeaderboardItem]:
         async with self.connection.cursor() as cur:
             await cur.execute("SELECT * FROM leaderboard ORDER BY downloaded_bytes DESC")
-            return await cur.fetchall()
+            records: list[DBLeaderboardItem] = []
+            for record in cur:
+                records.append(DBLeaderboardItem(
+                    record["discord_id"],
+                    record["discord_username"],
+                    record["avatar_url"],
+                    record["downloaded_chunks"],
+                    record["downloaded_bytes"]
+                ))
+            return records
+        
+    # Stat mutations
+    async def set_stat(self, key: str, value: int):
+        async with self.connection.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO stat (key, value) "
+                "VALUES ($1, $2)"
+                "ON CONFLICT DO UPDATE key=$1, value=$2",
+                (key, value)
+            )
 
     # File mutations
     async def insert_file(self, file_id: str, path: str, size: int, url: str, chunk_size: int, complete: bool = False):
