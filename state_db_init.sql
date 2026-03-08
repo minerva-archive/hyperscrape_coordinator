@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS leaderboard
     discord_id        TEXT      PRIMARY KEY NOT NULL,
     discord_username  TEXT      NOT NULL,
     avatar_url        TEXT, -- Nullable
-    downloaded_chunks INTEGER NOT NULL DEFAULT 0,
-    downloaded_bytes  INTEGER NOT NULL DEFAULT 0
+    downloaded_chunks BIGINT NOT NULL DEFAULT 0,
+    downloaded_bytes  BIGINT NOT NULL DEFAULT 0
 );
 COMMIT;

@@ -53,7 +53,7 @@ async def register_worker(ip: str, data: dict) -> WSMessage:
     state.redis.add_worker(state.local_workers[worker_id]) # Add worker to the count
     connection: StateDBConnection
     async with state.db.get_connection() as connection:
-        await connection.add_to_leaderboard(discord_id, discord_username, avatar_url)
+        await connection.insert_leaderboard_entry(discord_id, discord_username, avatar_url)
 
     return WSMessage(WSMessageType.REGISTER_RESPONSE, {
         "worker_id": worker_id,
