@@ -90,7 +90,7 @@
                 <h2>Completed</h2>
             </div>
             <div class="stats-card">
-                <h1 id="downloaded_bytes"></h1>
+                <h1 id="uploaded_bytes"></h1>
                 <h2>Uploaded</h2>
             </div>
             <div class="stats-card">
@@ -161,7 +161,7 @@
                 {
                     const status = await status_response.json();
                     document.getElementById("completed_bytes").innerText = unitifier(status["completed_bytes"]) + 'B';
-                    document.getElementById("downloaded_bytes").innerText = unitifier(status["downloaded_bytes"]) + 'B';
+                    document.getElementById("uploaded_bytes").innerText = unitifier(status["uploaded_bytes"]) + 'B';
                     document.getElementById("total_bytes").innerText = unitifier(status["total_bytes"]) + 'B';
                     document.getElementById("current_speed").innerText = unitifier(status["current_speed"]) + "B/s";
                     document.getElementById("active_workers").innerText = status["active_workers"];
@@ -186,7 +186,7 @@
 
                         rank.innerText = i;
                         downloaded_chunks.innerText = leaderboard_item["downloaded_chunks"];
-                        downloaded_data.innerText = unitifier(leaderboard_item["downloaded_bytes"]) + "B";
+                        downloaded_data.innerText = unitifier(leaderboard_item["uploaded_bytes"]) + "B";
 
                         const image = document.createElement("img");
                         image.src = leaderboard_item["avatar_url"];
