@@ -97,7 +97,7 @@ async def remove_worker(worker_id: str) -> None:
         except:
             pass
 
-        redis.remove_worker(worker_id)
+        # Cleanup handlers
         for chunk_id in list(worker.get_file_handles().keys()):
             worker.close_file_handle(chunk_id)
             file_path = worker.get_file_paths().get(chunk_id)
@@ -105,9 +105,12 @@ async def remove_worker(worker_id: str) -> None:
                 os.remove(file_path)
             worker.remove_file_path(chunk_id)
             worker.remove_chunk_hash(chunk_id)
+
+        # Cleanup databases
+        redis.remove_worker(worker_id)
         connection: StateDBConnection
         async with db.get_connection() as connection:
-            await connection.delete_worker_worker_statuses(worker.get_id())
+            await connection.remove_worker(worker.get_id())
 
     with workers_lock:
         local_workers.pop(worker_id, None)

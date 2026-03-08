@@ -14,7 +14,7 @@ async def background_coordinator():
         current = time.time()
 
         connection: StateDBConnection
-        with state.db.get_connection() as connection:
+        async with state.db.get_connection() as connection:
             # Calculate current upload speed
             if (current - last_stat_calc_time > 1):
                 state.total_file_count = await connection.get_total_file_count()
