@@ -138,7 +138,7 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
         if (highest_chunk_id != None):
             # If the free space is less than the chunk, we don't assign this chunk
             chunk_size = state.chunks[highest_chunk_id].get_end() - state.chunks[highest_chunk_id].get_start()
-            free -= state.assigned_chunks * chunk_size
+            free -= state.get_assigned_chunks() * chunk_size
             if (free <= chunk_size): 
                 continue
             chunk_to_file[highest_chunk_id] = file_id
@@ -166,7 +166,7 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
                 chunk.get_end()
             ]
         }
-    state.assigned_chunks += len(chunks_to_download)
+    state.add_assigned_chunks(len(chunks_to_download))
     return WSMessage(WSMessageType.CHUNK_RESPONSE, response)
 
 
@@ -229,7 +229,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     # Update the stats
     if (worker.get_discord_id()):
         state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
-    state.downloaded_bytes += len(data["payload"])
+    state.add_downloaded_bytes(len(data["payload"]))
     
 
     if (hash_only):
@@ -255,8 +255,8 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     worker.remove_chunk_hash(chunk_id)
     
     # Update state
-    state.assigned_chunks -= 1
-    state.completed_chunks += 1
+    state.add_assigned_chunks(-1)
+    state.add_completed_chunks(1)
     if (worker.get_discord_id()):
         state.update_stats_chunks(worker.get_discord_id(), 1)
 
@@ -287,7 +287,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
                 chunk.remove_worker_status(worker_id)
 
                 # Mark the chunk as failed
-                state.failed_chunks += 1
+                state.add_failed_chunks(1)
             return WSMessage(WSMessageType.OK_RESPONSE, {"result": "Upload had a mismatched hash, you can ignore this", "chunk_id": chunk_id}) # We've processed the upload from the client, don't come back regardless of what happened
         
         # If the hashes weren't mismatched...
@@ -372,7 +372,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
         # We don't want to download this again
         state.sorted_downloadable_files.remove(chunk_file_object.get_id())
         # Stat updates
-        state.completed_bytes += chunk_file_object.get_total_size()
+        state.add_completed_bytes(chunk_file_object.get_total_size())
         # Write hashes to db
         db.insert_file_hash(
             chunk_file_object.get_id(),
@@ -392,7 +392,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
         ##             del state.chunks[chunk_id]
         ##             db.delete_chunk(chunk_id)
     
-    state.completed_files += 1
+    state.add_completed_files(1)
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload entire file complete!", "chunk_id": chunk_id})
 
 
@@ -426,5 +426,5 @@ def detach_chunk(worker: Worker, data: dict) -> WSMessage:
         # This lets the coordinator know that a "slot" has openned up for another worker to take its place
         if (state.chunks[chunk_id].has_worker(worker.get_id())):
             state.chunks[chunk_id].remove_worker_status(worker.get_id())
-            state.assigned_chunks -= 1
+            state.add_assigned_chunks(-1)
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})

@@ -132,19 +132,20 @@ def get_stats() -> dict:
     """
 
     total_files = len(state.files)
+    stats = state.get_stats_snapshot()
     return {
         "total_files": total_files,
         "total_chunks": len(state.chunks),
-        "completed_files": state.completed_files,
-        "completed_chunks": state.completed_chunks,
-        "assigned": state.assigned_chunks,
-        "pending": total_files - state.completed_files,
-        "failed": state.failed_chunks,
+        "completed_files": stats["completed_files"],
+        "completed_chunks": stats["completed_chunks"],
+        "assigned": stats["assigned"],
+        "pending": total_files - stats["completed_files"],
+        "failed": stats["failed"],
         "active_workers": len(state.workers),
-        "downloaded_bytes": state.downloaded_bytes,
-        "completed_bytes": state.completed_bytes,
-        "total_bytes": state.total_bytes,
-        "current_speed": state.current_speed
+        "downloaded_bytes": stats["downloaded_bytes"],
+        "completed_bytes": stats["completed_bytes"],
+        "total_bytes": stats["total_bytes"],
+        "current_speed": stats["current_speed"]
     }
 
 
