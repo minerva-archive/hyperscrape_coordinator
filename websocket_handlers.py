@@ -35,6 +35,8 @@ def register_worker(ip: str, data: dict) -> WSMessage:
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid Request"})
     if (data["version"] != state.config['general']['version']):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": f"Version mismatch, expected {state.config['general']['version']}, got {data['version']}"})
+    if (type(data["max_concurrent"]) != int or data["max_concurrent"] <= 0):
+        return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid Request"})
     
     discord_id = None
     discord_username = None
@@ -73,8 +75,16 @@ def get_chunks(worker: Worker, data: dict) -> WSMessage:
     @return (WSMessage): A response, if all is well it'll contain the chunks assigned to the worker
     """
 
+    if (worker is None or type(data) != dict):
+        return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
+    count = data.get("count", None)
+    if (type(count) != int):
+        return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
+    if (count <= 0):
+        return WSMessage(WSMessageType.CHUNK_RESPONSE, {})
+
     total, used, free = shutil.disk_usage(state.config["paths"]["chunk_temp_path"]) # Get storage path stats
-    num_chunks_to_get = int(data["count"])
+    num_chunks_to_get = min(count, worker.get_max_concurrent())
 
     chunks_to_download = []
     chunk_to_file = {}
@@ -180,13 +190,14 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     @return (WSMessage): The response
     """
 
-    if (type(data) != dict):
+    if (worker is None or type(data) != dict):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
     
     chunk_id = data.get("chunk_id", None)
     file_id = data.get("file_id", None)
 
-    if (chunk_id == None or file_id == None):
+    payload = data.get("payload", None)
+    if (chunk_id == None or file_id == None or type(payload) != bytes):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
 
     # Ensure the chunk exists
@@ -220,20 +231,20 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     
     # If the file should be written to, then we should write to it :p
     if (not hash_only):
-        worker.get_file_handle(chunk_id).write(data["payload"])
+        worker.get_file_handle(chunk_id).write(payload)
         worker.get_file_handle(chunk_id).flush()
 
     # Update the hash
-    worker.get_chunk_hash(chunk_id).update(data["payload"])
+    worker.get_chunk_hash(chunk_id).update(payload)
 
     # Update the stats
     if (worker.get_discord_id()):
-        state.update_stats_bytes(worker.get_discord_id(), len(data["payload"]))
-    state.downloaded_bytes += len(data["payload"])
+        state.update_stats_bytes(worker.get_discord_id(), len(payload))
+    state.downloaded_bytes += len(payload)
     
 
     if (hash_only):
-        chunk.update_worker_status_uploaded(worker.get_id(), len(data["payload"]))
+        chunk.update_worker_status_uploaded(worker.get_id(), len(payload))
     else:
         # We prefer this for more robust upload detection when possible (ie: when it's actually downloading the file)
         chunk.update_worker_status_uploaded(worker.get_id(), worker.get_file_handle(chunk_id).tell())
@@ -255,7 +266,7 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     worker.remove_chunk_hash(chunk_id)
     
     # Update state
-    state.assigned_chunks -= 1
+    state.assigned_chunks = max(0, state.assigned_chunks - 1)
     state.completed_chunks += 1
     if (worker.get_discord_id()):
         state.update_stats_chunks(worker.get_discord_id(), 1)
@@ -281,7 +292,9 @@ def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
                 # If this is the downloaded one, we should delete it
                 if (not chunk.get_worker_hash_only(worker_id)):
-                    os.remove(get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)) # Remove the chunk this worker downloaded
+                    mismatch_path = get_chunk_instance_temp_path(chunk_file_object.get_id(), chunk_id, worker_id)
+                    if (os.path.exists(mismatch_path)):
+                        os.remove(mismatch_path) # Remove the chunk this worker downloaded
 
                 # Mark the chunk as needing more instances by removing the old ones
                 chunk.remove_worker_status(worker_id)
@@ -407,10 +420,12 @@ def detach_chunk(worker: Worker, data: dict) -> WSMessage:
     @return (WSMessage): The response message
     """
 
-    if (type(data) != dict):
+    if (worker is None or type(data) != dict):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
     
-    chunk_id = data["chunk_id"]
+    chunk_id = data.get("chunk_id", None)
+    if (chunk_id == None):
+        return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
     if (not chunk_id in state.chunks):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "No such chunk"})
     
@@ -418,7 +433,9 @@ def detach_chunk(worker: Worker, data: dict) -> WSMessage:
         # Close the file handles and cleanup worker state info if applicable
         if (chunk_id in worker.get_file_handles()):
             worker.close_file_handle(chunk_id)
-            os.remove(worker.get_file_path(chunk_id))
+            file_path = worker.get_file_paths().get(chunk_id, None)
+            if (file_path and os.path.exists(file_path)):
+                os.remove(file_path)
             worker.remove_file_path(chunk_id)
             worker.remove_chunk_hash(chunk_id)
 
@@ -426,5 +443,5 @@ def detach_chunk(worker: Worker, data: dict) -> WSMessage:
         # This lets the coordinator know that a "slot" has openned up for another worker to take its place
         if (state.chunks[chunk_id].has_worker(worker.get_id())):
             state.chunks[chunk_id].remove_worker_status(worker.get_id())
-            state.assigned_chunks -= 1
+            state.assigned_chunks = max(0, state.assigned_chunks - 1)
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})
