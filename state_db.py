@@ -27,7 +27,13 @@ class StateDB:
 
     
     def close(self):
-        self._write_conn.close()
+        if (self._write_conn is None):
+            return
+        try:
+            self.flush()
+            self._write_conn.close()
+        finally:
+            self._write_conn = None
 
 
     @property
