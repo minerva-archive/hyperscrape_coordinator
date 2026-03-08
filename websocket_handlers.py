@@ -5,18 +5,15 @@ import xxhash
 
 from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
 import state
+from state_db import StateDBConnection
 from workers import Worker
 from ws_message import WSMessage, WSMessageType
-from files import HyperscrapeChunk
 
 import hashlib
 import shutil
 import os
-from state_db import db
 
-
-
-def register_worker(ip: str, data: dict) -> WSMessage:
+async def register_worker(ip: str, data: dict) -> WSMessage:
     """!
     @brief Registers a worker with the coordinator
 
@@ -52,10 +49,11 @@ def register_worker(ip: str, data: dict) -> WSMessage:
     
     worker_id = str(uuid4())
     with state.workers_lock:
-        state.workers[worker_id] = Worker(worker_id, ip, data["max_concurrent"], discord_id)
-    if (discord_id and not discord_id in state.current_leaderboard):
-        state.current_leaderboard[discord_id] = state.LeaderboardObject(discord_id, discord_username, avatar_url, 0, 0)
-        db.insert_leaderboard_entry(discord_id, discord_username, avatar_url)
+        state.local_workers[worker_id] = Worker(worker_id, ip, data["max_concurrent"], discord_id)
+    state.redis.add_worker(state.local_workers[worker_id]) # Add worker to the count
+    connection: StateDBConnection
+    async with state.db.get_connection() as connection:
+        await connection.add_to_leaderboard(discord_id, discord_username, avatar_url)
 
     return WSMessage(WSMessageType.REGISTER_RESPONSE, {
         "worker_id": worker_id,

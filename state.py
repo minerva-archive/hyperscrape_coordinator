@@ -1,15 +1,11 @@
 ###
 # Global state vars
 ###
-import traceback
-from uuid import uuid4
-from tqdm import tqdm
-from files import HyperscrapeChunk, HyperscrapeFile, WorkerStatus
-from collections import defaultdict
 from threading import Lock
+from redis_db import RedisDB
 from workers import Worker
 from msgspec import json
-from state_db import db
+from state_db import StateDB, StateDBConnection
 import tomllib
 import math
 import time
@@ -28,105 +24,35 @@ except:
 global shutting_down
 shutting_down = False
 
-global workers
-global files
-global chunks
-global file_chunk_count
-global file_worker_count
-global sorted_files
-workers: dict[str, Worker] = {}
-files: dict[str, HyperscrapeFile] = {}
-chunks: dict[str, HyperscrapeChunk] = {}
-file_worker_counts: dict[str, int] = {} # Count how many workers are using each file
-sorted_downloadable_files: list[str] = [] # List of files to be downloaded sorted by how many workers are using it
-
+###
+# Handles workers
+###
+global local_workers
 global workers_lock
-global files_lock
-global chunks_lock
-global hashes_lock
-workers_lock = Lock()
-files_lock = Lock()
-chunks_lock = Lock()
-hashes_lock = Lock()
+local_workers: dict[str, Worker] = {}
+workers_lock: Lock = Lock()
 
 ###
-# Handles storing stats and all that
+# Cached stats
 ###
-
-
-global completed_files
-global completed_chunks
-global assigned_chunks
-global failed_chunks
-global downloaded_bytes
+global total_file_count
+global total_chunk_count
+global completed_file_count
+global completed_chunk_count
+global assigned_chunk_count
+global uploaded_bytes
 global completed_bytes
 global total_bytes
 global current_speed
-completed_files = 0
-completed_chunks = 0
-assigned_chunks = 0
-failed_chunks = 0
-downloaded_bytes = 0
+total_file_count = 0
+total_chunk_count = 0
+completed_file_count = 0
+completed_chunk_count = 0
+assigned_chunk_count = 0
+uploaded_bytes = 0
 completed_bytes = 0
 total_bytes = 0
 current_speed = 0
-
-class LeaderboardObject():
-    def __init__(self,
-                 discord_id: str,
-                 discord_username: str,
-                 avatar_url: str,
-                 downloaded_chunks: int = 0,
-                 downloaded_bytes: int = 0):
-        
-        self._discord_id = discord_id
-        self._discord_username = discord_username
-        self._avatar_url = avatar_url
-        self._downloaded_chunks = downloaded_chunks
-        self._downloaded_bytes = downloaded_bytes
-
-    def get_discord_id(self):
-        return self._discord_id
-    
-    def get_discord_username(self):
-        return self._discord_username
-    
-    def get_avatar_url(self):
-        return self._avatar_url
-    
-    def get_downloaded_chunks(self):
-        return self._downloaded_chunks
-    
-    def get_downloaded_bytes(self):
-        return self._downloaded_bytes
-    
-    def update_downloaded_bytes(self, change: int):
-        self._downloaded_bytes += change
-        db.update_leaderboard_downloaded_bytes(self._discord_id, change)
-    
-    def update_downloaded_chunks(self, change: int):
-        self._downloaded_chunks += change
-        db.update_leaderboard_downloaded_chunks(self._discord_id, change)
-
-
-global current_leaderboard
-global current_leaderboard_order
-global current_leaderboard_lock
-current_leaderboard_order: list[str] = []
-current_leaderboard: dict[str, LeaderboardObject] = {} # Maps discord IDs to a leaderboard objects
-current_leaderboard_lock = Lock()
-###
-###
-###
-
-
-def update_stats_bytes(discord_id: str, byte_count: int):
-    current_leaderboard[discord_id].update_downloaded_bytes(byte_count)
-
-
-def update_stats_chunks(discord_id: str, chunk_count: int):
-    current_leaderboard[discord_id].update_downloaded_chunks(chunk_count)
-   
 
 ###
 # Config + Secrets loading
@@ -144,22 +70,13 @@ with open("./secrets.toml", 'rb') as file:
     secrets = tomllib.load(file)
 
 ###
-# State helpers
+# Databases
 ###
-# Files
-def add_file(file: HyperscrapeFile) -> None:
-    """!
-    @brief Adds a file to the current state storing files
+global db
+db: StateDB = StateDB(config["database"]["psql_connstring"])
 
-    @param file (HyperscrapeFile): The file to add
-    """
-
-    with files_lock:
-        files[file.get_id()] = file
-        file_worker_counts[file.get_id()] = 0
-        sorted_downloadable_files.append(file.get_id())
-        db.insert_file(file.get_id(), file.get_path(), file.get_total_size(), file.get_url(), file.get_chunk_size())
-
+global redis
+redis: RedisDB = RedisDB(config["database"]["redis_host"], config["database"]["redis_port"], config["database"]["redis_db"])
 
 # Workers
 async def remove_worker(worker_id: str) -> None:
@@ -168,9 +85,8 @@ async def remove_worker(worker_id: str) -> None:
 
     @param worker_id (str): The ID of the worker to remove
     """
-    global assigned_chunks
     with workers_lock:
-        worker = workers.get(worker_id)
+        worker = local_workers.get(worker_id)
     if (not worker):
         return
 
@@ -181,6 +97,7 @@ async def remove_worker(worker_id: str) -> None:
         except:
             pass
 
+        redis.remove_worker(worker_id)
         for chunk_id in list(worker.get_file_handles().keys()):
             worker.close_file_handle(chunk_id)
             file_path = worker.get_file_paths().get(chunk_id)
@@ -188,12 +105,13 @@ async def remove_worker(worker_id: str) -> None:
                 os.remove(file_path)
             worker.remove_file_path(chunk_id)
             worker.remove_chunk_hash(chunk_id)
-            if (chunk_id in chunks):
-                chunks[chunk_id].remove_worker_status(worker.get_id())
-                assigned_chunks = max(0, assigned_chunks - 1)
+        connection: StateDBConnection
+        async with db.get_connection() as connection:
+            await connection.delete_worker_worker_statuses(worker.get_id())
 
     with workers_lock:
-        workers.pop(worker_id, None)
+        local_workers.pop(worker_id, None)
+        
 
 
 ###
@@ -219,160 +137,31 @@ def unban_ip(ip: str):
 ###
 # Chunks
 ###
-def cleanup_chunk_workers(chunk_id: str) -> None:
+async def cleanup_chunk_workers(chunk_id: str) -> None:
     """!
     @brief Given a chunk, removes stale workers from it and deletes their data
 
     @param chunk_id (str): The chunk to remove stale workers from
     """
-    chunk = chunks[chunk_id]
-    with chunk.get_lock():
-        for worker_id in list(chunk.get_workers()):
+    connection: StateDBConnection
+    async with db.get_connection() as connection:
+        worker_statuses = await connection.get_chunk_worker_status(chunk_id)
+        for worker_status in worker_statuses:
+            if (not worker_status.worker_id in local_workers):
+                continue # Not one of our workers? Ignore it
             if (
-                not chunk.get_worker_complete(worker_id) and # Only remove incomplete chunks
+                not worker_status.hash and # Only remove incomplete chunks
                 (
-                    (not worker_id in workers) or # If the worker is no longer present
-                    time.time() - chunk.get_worker_last_updated(worker_id) > config["general"]["worker_timeout"] # Or it timed out
+                    time.time() - redis.get_worker_status_last_updated(chunk_id, worker_status.worker_id) > config["general"]["worker_timeout"] # Or it timed out
                 )
             ):
                 # Cleanup worker info
-                if (worker_id in workers):
-                    with workers[worker_id].get_lock():
-                        if (not chunk.get_worker_hash_only(worker_id)):
-                            if (chunk.get_id() in workers[worker_id].get_file_handles()):
-                                workers[worker_id].close_file_handle(chunk.get_id())
-                            workers[worker_id].remove_file_path(chunk.get_id())
-                        workers[worker_id].remove_chunk_hash(chunk.get_id())
-                # Remove status
-                chunk.remove_worker_status(worker_id)
-
-def load_state_from_db():
-    """!
-    @brief This loads the global state from the database
-    """
-
-    global files
-    global chunks
-    global current_leaderboard
-
-    files = {}
-    chunks = {}
-    current_leaderboard = {}
-
-    # build file chunks as we build chunks list
-    file_chunks: dict[str, set[str]] = defaultdict(set)
-
-    current_time = time.time()
-    # rebuild chunks from db
-    db_chunks = db.get_chunks()
-    for db_chunk in db_chunks:
-        db_worker_statuses = db.get_chunk_worker_status(db_chunk["id"])
-        worker_status: dict[str, WorkerStatus] = {}
-        for db_worker_status in db_worker_statuses:
-            if (not db_worker_status["hash"]):
-                continue # No hash - no need for this status
-            worker_status[db_worker_status["worker_id"]] = WorkerStatus(
-                db_worker_status["uploaded"],
-                db_worker_status["hash"],
-                db_worker_status["hash_only"],
-                current_time # Yeah so this doesn't actually matter all that much
-            )
-        chunk = HyperscrapeChunk(
-            db_chunk["id"],
-            db_chunk["start"],
-            db_chunk["end"],
-            worker_status,
-        )
-        file_chunks[db_chunk["file_id"]].add(chunk.get_id())
-        chunks[db_chunk["id"]] = chunk
-
-    # rebuild files from db
-    db_files = db.get_files()
-    for db_file in db_files:
-        files[db_file["id"]] = HyperscrapeFile(
-            db_file["id"],
-            db_file["path"],
-            db_file["size"],
-            db_file["url"],
-            db_file["chunk_size"],
-            file_chunks.get(db_file["id"], set()),
-            bool(db_file["complete"]),
-        )
-
-    # rebuild current_leaderboard from db
-    db_leaderboard = db.get_leaderboard()
-    for db_entry in db_leaderboard:
-        current_leaderboard[db_entry["discord_id"]] = LeaderboardObject(
-            db_entry["discord_id"],
-            db_entry["discord_username"],
-            db_entry["avatar_url"],
-            db_entry["downloaded_chunks"],
-            db_entry["downloaded_bytes"],
-        )
-
-def load_state():
-    """!
-    @brief This loads the state from the db and sets up the stats objects
-    """
-    global files_lock
-    global files
-    global chunks_lock
-    global chunks
-    global current_leaderboard_lock
-    global current_leaderboard
-    global total_bytes
-    global completed_files
-    global completed_bytes
-    global completed_chunks
-    global sorted_downloadable_files
-    global file_worker_counts
-    global downloaded_bytes
-    global assigned_chunks
-    print("Loading current state...")
-    generated_chunks = 0
-    try:
-        load_state_from_db()
-        print("Generating files to download...")
-        for file_id in tqdm(files):
-            file = files[file_id]
-            total_bytes += file.get_total_size() * config["general"]["trust_count"]
-
-            # Regenerate chunks as needed
-            if (len(file.get_chunks()) == 0 and file.get_total_size() != 0):
-                print(f"Generating chunks for {file_id}...")
-                current_size = 0
-                with chunks_lock:
-                    while current_size < file.get_total_size():
-                        start = current_size
-                        end = min(current_size + file.get_chunk_size(), file.get_total_size())
-                        chunk_id = str(uuid4())
-                        chunks[chunk_id] = HyperscrapeChunk(chunk_id, start, end)
-                        file.add_chunk(chunk_id)
-                        db.insert_chunk(chunk_id, file_id, start, end)
-                        current_size = end
-                        generated_chunks += 1
-
-            if (file.get_complete()):
-                completed_files += 1
-                completed_bytes += file.get_total_size() * config["general"]["trust_count"]
-                completed_chunks += math.ceil(file.get_total_size() / files[file_id].get_chunk_size())
-            else:
-                file_worker_counts[file_id] = 0
-                sorted_downloadable_files.append(file_id)
-
-                for chunk_id in file.get_chunks():
-                    for worker_id in chunks[chunk_id].get_workers():
-                        file_worker_counts[file_id] += 1
-                        if (chunks[chunk_id].get_worker_complete(worker_id)):
-                            completed_chunks += 1
-                            downloaded_bytes += chunks[chunk_id].get_end() - chunks[chunk_id].get_start()
-                        else:
-                            assigned_chunks += 1
-        if (generated_chunks > 0):
-            print(f"NOTE: Generated {generated_chunks} new chunks!")
-        print(f"Server has {len(files)} files - of which {len(sorted_downloadable_files)} will be downloaded")
-    except Exception as e:
-        print("NOTE: Could not load previous file state:")
-        print(e)
-        traceback.print_exc()
-load_state()
+                with local_workers[worker_status.worker_id].get_lock():
+                    if (not worker_status.hash_only):
+                        if (chunk_id in local_workers[worker_status.worker_id].get_file_handles()):
+                            local_workers[worker_status.worker_id].close_file_handle(chunk_id)
+                        local_workers[worker_status.worker_id].remove_file_path(chunk_id)
+                    local_workers[worker_status.worker_id].remove_chunk_hash(chunk_id)
+                # Remove status info
+                redis.remove_worker_status_last_updated(worker_status.worker_id)
+                connection.delete_worker_status(chunk_id, worker_status.worker_id)

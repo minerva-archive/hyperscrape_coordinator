@@ -10,6 +10,7 @@ import uvicorn
 import state
 
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
+from state_db import StateDBConnection
 from websocket_handlers import detach_chunk, get_chunks, register_worker, upload_chunk
 from ws_message import WSMessage, WSMessageType
 from fastapi.responses import HTMLResponse
@@ -124,24 +125,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.get("/api/stats")
-def get_stats() -> dict:
+async def get_stats() -> dict:
     """!
     @brief Return stats about the current coordinator state
-
-    @return (dict): _description_
     """
 
-    total_files = len(state.files)
     return {
-        "total_files": total_files,
-        "total_chunks": len(state.chunks),
-        "completed_files": state.completed_files,
-        "completed_chunks": state.completed_chunks,
-        "assigned": state.assigned_chunks,
-        "pending": total_files - state.completed_files,
-        "failed": state.failed_chunks,
-        "active_workers": len(state.workers),
-        "downloaded_bytes": state.downloaded_bytes,
+        "total_files": state.total_file_count,
+        "total_chunks": state.total_chunk_count,
+        "completed_files": state.completed_file_count,
+        "completed_chunks": state.completed_chunk_count,
+        "assigned": state.assigned_chunk_count,
+        "pending": state.total_file_count - state.completed_file_count,
+        "active_workers": state.redis.get_total_workers(),
+        "uploaded_bytes": state.uploaded_bytes,
         "completed_bytes": state.completed_bytes,
         "total_bytes": state.total_bytes,
         "current_speed": state.current_speed
@@ -149,7 +146,7 @@ def get_stats() -> dict:
 
 
 @app.get("/api/leaderboard")
-def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
+async def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
     """!
     @brief Get the current leaderboard
 
@@ -160,19 +157,20 @@ def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
     """
 
     response = []
-    for leaderboard_id in state.current_leaderboard_order[offset:limit]:
-        leaderboard_object = state.current_leaderboard[leaderboard_id]
-        response.append({
-            "discord_username": leaderboard_object.get_discord_username(),
-            "avatar_url": leaderboard_object.get_avatar_url(),
-            "downloaded_chunks": leaderboard_object.get_downloaded_chunks(),
-            "downloaded_bytes": leaderboard_object.get_downloaded_bytes()
-        })
+    connection: StateDBConnection
+    async with state.db.get_connection() as connection:
+        for leaderboard_item in await connection.get_leaderboard():
+            response.append({
+                "discord_username": leaderboard_item.discord_username,
+                "avatar_url": leaderboard_item.avatar_url,
+                "downloaded_chunks": leaderboard_item.downloaded_chunks,
+                "downloaded_bytes": leaderboard_item.downloaded_bytes
+            })
     return response
 
 
 @app.get("/code", response_class=HTMLResponse)
-def get_code(request: Request, code: str):
+async def get_code(request: Request, code: str):
     """!
     @brief The code page for Discord auth
 
@@ -210,12 +208,12 @@ def get_code(request: Request, code: str):
     )
     
 @app.get("/")
-def slash_index(request: Request):
+async def slash_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
     
 # @FIXME: This is probably redundant
 @app.get("/index.html")
-def html_index(request: Request):
+async def html_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 console.start()

@@ -1,43 +1,39 @@
+CREATE TABLE IF NOT EXISTS stat
+(
+    key         TEXT    PRIMARY KEY NOT NULL,
+    value       BIGINT NOT NULL
+);
+
+INSERT INTO stat (key, value) VALUES ('downloaded_bytes', 0);
+
 CREATE TABLE IF NOT EXISTS file
 (
     id         TEXT     PRIMARY KEY NOT NULL,
     path       TEXT     NOT NULL,
-    size       INTEGER, -- Nullable at first
+    size       BIGINT, -- Nullable at first
     url        TEXT     NOT NULL,
-    chunk_size INTEGER  NOT NULL,
-    complete   INTEGER  NOT NULL DEFAULT 0
+    chunk_size BIGINT  NOT NULL,
+    complete   BOOLEAN  NOT NULL DEFAULT FALSE
 );
-
-CREATE INDEX IF NOT EXISTS file_path_index
-    on file (path);
 
 CREATE TABLE IF NOT EXISTS chunk
 (
     id          TEXT    PRIMARY KEY NOT NULL,
     file_id     TEXT    NOT NULL REFERENCES file(id),
-    start       INTEGER NOT NULL,
-    end         INTEGER NOT NULL,
+    start       BIGINT NOT NULL,
+    end         BIGINT NOT NULL,
     UNIQUE(file_id, start)
 );
-
-CREATE INDEX IF NOT EXISTS chunk_file_id_index
-    on chunk (file_id);
 
 CREATE TABLE IF NOT EXISTS worker_status
 (
     chunk_id        TEXT        NOT NULL,
     worker_id       TEXT        NOT NULL,
-    uploaded        INTEGER     NOT NULL,
+    uploaded        BIGINT     NOT NULL,
     hash            TEXT,                   -- Can be null
-    hash_only       INTEGER     NOT NULL,
+    hash_only       BOOLEAN     NOT NULL,
     PRIMARY KEY (chunk_id, worker_id)
 );
-
-CREATE INDEX IF NOT EXISTS worker_status_chunk_index
-    on worker_status (chunk_id);
-
-CREATE INDEX IF NOT EXISTS worker_status_worker_index
-    on worker_status (worker_id);
 
 CREATE TABLE IF NOT EXISTS file_hash
 (
@@ -46,9 +42,6 @@ CREATE TABLE IF NOT EXISTS file_hash
     sha1            TEXT NOT NULL,
     sha256          TEXT NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS file_hash_file_id_index
-    on file_hash (file_id);
 
 CREATE TABLE IF NOT EXISTS leaderboard
 (
