@@ -42,12 +42,12 @@ class DBFileHash():
         self.sha256 = sha256
 
 class DBLeaderboardItem():
-    def __init__(self, discord_id: str, discord_username: str, avatar_url: str|None, downloaded_chunks: int, downloaded_bytes: int):
+    def __init__(self, discord_id: str, discord_username: str, avatar_url: str|None, uploaded_chunks: int, uploaded_bytes: int):
         self.discord_id = discord_id
         self.discord_username = discord_username
         self.avatar_url = avatar_url
-        self.downloaded_chunks = downloaded_chunks
-        self.downloaded_bytes = downloaded_bytes
+        self.uploaded_chunks = uploaded_chunks
+        self.uploaded_bytes = uploaded_bytes
 
 class DBWorkerInfo():
     def __init__(self, id: str, ip: str):
@@ -215,9 +215,9 @@ class StateDBConnection(ContextDecorator):
     async def get_leaderboard(self, limit: int, offset: int) -> list[DBLeaderboardItem]:
         records: list[DBLeaderboardItem] = []
         async for record in self._cursor.stream(
-            "SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes "
+            "SELECT discord_id, discord_username, avatar_url, uploaded_chunks, uploaded_bytes "
             "FROM leaderboard "
-            "ORDER BY downloaded_bytes DESC "
+            "ORDER BY uploaded_bytes DESC "
             "LIMIT %s OFFSET %s",
             (limit, offset)
         ):
@@ -231,7 +231,7 @@ class StateDBConnection(ContextDecorator):
         return records
         
     async def get_leaderboard_item(self, discord_id: str) -> DBLeaderboardItem:
-        await self._cursor.execute("SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard WHERE discord_id = %s", (discord_id, ))
+        await self._cursor.execute("SELECT discord_id, discord_username, avatar_url, uploaded_chunks, uploaded_bytes FROM leaderboard WHERE discord_id = %s", (discord_id, ))
         record = self._cursor.fetchone()        
         return DBLeaderboardItem(
             record[0],
@@ -470,23 +470,23 @@ class StateDBConnection(ContextDecorator):
                                  discord_id: str,
                                  discord_username: str,
                                  avatar_url: str,
-                                 downloaded_chunks: int = 0,
-                                 downloaded_bytes: int = 0):
+                                 uploaded_chunks: int = 0,
+                                 uploaded_bytes: int = 0):
         await self._cursor.execute(
-            "INSERT INTO leaderboard (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes) "
+            "INSERT INTO leaderboard (discord_id, discord_username, avatar_url, uploaded_chunks, uploaded_bytes) "
             "VALUES (%s, %s, %s, %s, %s) "
             "ON CONFLICT (discord_id) DO NOTHING",
-            (discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes)
+            (discord_id, discord_username, avatar_url, uploaded_chunks, uploaded_bytes)
         )
 
-    async def update_leaderboard_downloaded_bytes(self, discord_id: str, change: int):
+    async def update_leaderboard_uploaded_bytes(self, discord_id: str, change: int):
         await self._cursor.execute(
-            "UPDATE leaderboard SET downloaded_bytes = downloaded_bytes + %s WHERE discord_id = %s",
+            "UPDATE leaderboard SET uploaded_bytes = uploaded_bytes + %s WHERE discord_id = %s",
             (change, discord_id)
         )
 
-    async def update_leaderboard_downloaded_chunks(self, discord_id: str, change: int):
+    async def update_leaderboard_uploaded_chunks(self, discord_id: str, change: int):
         await self._cursor.execute(
-            "UPDATE leaderboard SET downloaded_chunks = downloaded_chunks + %s WHERE discord_id = %s",
+            "UPDATE leaderboard SET uploaded_chunks = uploaded_chunks + %s WHERE discord_id = %s",
             (change, discord_id)
         )

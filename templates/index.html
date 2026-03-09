@@ -181,11 +181,11 @@
                         const leaderboard_row = document.createElement("tr");
                         const rank = document.createElement("th");
                         const user = document.createElement("td");
-                        const downloaded_chunks = document.createElement("td");
+                        const uploaded_chunks = document.createElement("td");
                         const downloaded_data = document.createElement("td");
 
                         rank.innerText = i;
-                        downloaded_chunks.innerText = leaderboard_item["downloaded_chunks"];
+                        uploaded_chunks.innerText = leaderboard_item["uploaded_chunks"];
                         downloaded_data.innerText = unitifier(leaderboard_item["uploaded_bytes"]) + "B";
 
                         const image = document.createElement("img");
@@ -198,7 +198,7 @@
 
                         leaderboard_row.appendChild(rank);
                         leaderboard_row.appendChild(user);
-                        leaderboard_row.appendChild(downloaded_chunks);
+                        leaderboard_row.appendChild(uploaded_chunks);
                         leaderboard_row.appendChild(downloaded_data);
 
                         leaderboard_item_els.push(leaderboard_row);

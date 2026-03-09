@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS leaderboard
     discord_id        TEXT      PRIMARY KEY NOT NULL,
     discord_username  TEXT      NOT NULL,
     avatar_url        TEXT, -- Nullable
-    downloaded_chunks BIGINT NOT NULL DEFAULT 0,
-    downloaded_bytes  BIGINT NOT NULL DEFAULT 0
+    uploaded_chunks BIGINT NOT NULL DEFAULT 0,
+    uploaded_bytes  BIGINT NOT NULL DEFAULT 0
 );
 
 -- Create a materialized view that is an ordered list of chunks

@@ -24,7 +24,7 @@ async def main():
     sqlite3_cursor.execute("SELECT COUNT() FROM leaderboard")
     chunk_count = sqlite3_cursor.fetchone()[0]
     pbar = tqdm(total=chunk_count, unit="chunks")
-    sqlite3_cursor.execute("SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard")
+    sqlite3_cursor.execute("SELECT discord_id, discord_username, avatar_url, uploaded_chunks, uploaded_bytes FROM leaderboard")
     connection: StateDBConnection
     async with state.db.get_connection() as connection:
         while (row := sqlite3_cursor.fetchone()) != None:

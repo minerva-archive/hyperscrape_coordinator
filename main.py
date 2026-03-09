@@ -162,8 +162,8 @@ async def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
             response.append({
                 "discord_username": leaderboard_item.discord_username,
                 "avatar_url": leaderboard_item.avatar_url,
-                "downloaded_chunks": leaderboard_item.downloaded_chunks,
-                "downloaded_bytes": leaderboard_item.downloaded_bytes
+                "uploaded_chunks": leaderboard_item.uploaded_chunks,
+                "uploaded_bytes": leaderboard_item.uploaded_bytes
             })
     return response
 
