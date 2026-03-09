@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS file
     size            BIGINT, -- Nullable at first
     url             TEXT     NOT NULL,
     chunk_size      BIGINT  NOT NULL,
-    complete        BOOLEAN  NOT NULL DEFAULT FALSE,
-    expected_md5    TEXT
+    complete        BOOLEAN  NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS chunk
