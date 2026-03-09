@@ -182,6 +182,8 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
                 # We prefer this for more robust upload detection when possible (ie: when it's actually downloading the file)
                 await connection.set_worker_status_uploaded(chunk.id, worker.get_id(), worker.get_file_handle(chunk_id).tell())
         await connection.update_worker_status_last_updated(chunk.id, worker.get_id())
+        if (worker.get_discord_id()):
+            await connection.update_leaderboard_uploaded_bytes(worker.get_discord_id(), len(data["payload"]))
     del data["payload"] # Reduce memory consumption as we don't read the payload anymore
 
     # Check if the chunk instance is NOT complete
@@ -228,14 +230,16 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
                 print("WARNING: MISMATCH DETECTED!")
                 print(f"C: {chunk.id}")
                 return WSMessage(WSMessageType.OK_RESPONSE, {"result": "Upload had a mismatched hash, you can ignore this", "chunk_id": chunk_id}) # We've processed the upload from the client, don't come back regardless of what happened
-    
+
+    if (worker.get_discord_id()):
+        async with state.db.get_connection() as connection:
+            await connection.update_leaderboard_uploaded_chunks(worker.get_discord_id(), 1)
+
     # If the hashes weren't mismatched...
     if (len(chunk_workers) < state.config["general"]["trust_count"]): # Check that we have all the chunks responses we need
-        print("Still missing trust count!")
         return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id})
     for worker_status in chunk_workers: # Check that they're all complete
         if (not worker_status.hash):
-            print(f"Chunk: {chunk.id} is incomplete, missing {worker_status.worker_id}")
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id}) # If any of the workers aren't complete we just skip this
     
     # So all the hashes are good
