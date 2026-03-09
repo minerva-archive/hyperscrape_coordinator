@@ -138,34 +138,6 @@ def unban_ip(ip: str):
 ###
 # Chunks
 ###
-async def cleanup_chunk_workers(chunk_id: str) -> None:
-    """!
-    @brief Given a chunk, removes stale workers from it and deletes their data
-
-    @param chunk_id (str): The chunk to remove stale workers from
-    """
-    connection: StateDBConnection
-    async with db.get_connection() as connection:
-        worker_statuses = await connection.get_chunk_worker_status(chunk_id)
-        for worker_status in worker_statuses:
-            if (not worker_status.worker_id in local_workers):
-                continue # Not one of our workers? Ignore it
-            if (
-                not worker_status.hash and # Only remove incomplete chunks
-                (
-                    time.time() - worker_status.last_updated > config["general"]["worker_timeout"] # Or it timed out
-                )
-            ):
-                # Cleanup worker info
-                with local_workers[worker_status.worker_id].get_lock():
-                    if (not worker_status.hash_only):
-                        if (chunk_id in local_workers[worker_status.worker_id].get_file_handles()):
-                            local_workers[worker_status.worker_id].close_file_handle(chunk_id)
-                        local_workers[worker_status.worker_id].remove_file_path(chunk_id)
-                    local_workers[worker_status.worker_id].remove_chunk_hash(chunk_id)
-                # Remove status info
-                connection.delete_worker_status(chunk_id, worker_status.worker_id)
-
 async def initialise():
     await db.open()
 
@@ -175,4 +147,11 @@ async def main_initailise():
     """
     connection: StateDBConnection
     async with db.get_connection() as connection:
+        print("Initialising DB...")
+        with open("./state_db_init.sql") as file:
+            await connection._cursor.execute(file.read())
+        print("Truncating worker_info...")
         await connection._cursor.execute("TRUNCATE worker_info")
+        print("Cleaning worker_status...")
+        await connection._cursor.execute("DELETE FROM worker_status WHERE hash IS NULL")
+    print("Main initialisation complete!")

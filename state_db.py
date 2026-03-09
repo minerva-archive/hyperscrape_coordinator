@@ -63,11 +63,8 @@ class StateDB:
         self._pool = psycopg_pool.AsyncConnectionPool(conninfo, open=False)
 
     async def open(self):
-        await self._pool.open(wait=True)
-        connection: AsyncConnection
-        async with self._pool.connection() as connection:
-            with open("./state_db_init.sql") as file:
-                await connection.execute(file.read())
+        print("Opening DB...")
+        await self._pool.open(wait=True)        
 
     def get_connection(self) -> StateDBConnection:
         return StateDBConnection(self)
@@ -176,7 +173,7 @@ class StateDBConnection(ContextDecorator):
     async def get_chunks_for_file(self, file_id: str) -> list[DBChunk]:
         records: list[DBChunk] = []
         async for record in self._cursor.stream(
-            "SELECT id, file_id, range_start, range_end FROM chunk WHERE file_id = %s",
+            "SELECT id, file_id, range_start, range_end FROM chunk WHERE file_id = %s ORDER BY range_start ASC",
             (file_id,)
         ):
             records.append(DBChunk(
@@ -199,7 +196,7 @@ class StateDBConnection(ContextDecorator):
                 int(record[2]),
                 record[3],
                 record[4],
-                records[5]
+                record[5]
             ))
         return records
         
@@ -244,12 +241,12 @@ class StateDBConnection(ContextDecorator):
         """!
         @brief WARN: This function takes a LONG time to run, often up to over a minute - It should be done as sparsely as possible!
         """
-        await self._cursor.execute("REFRESH MATERIALIZED VIEW ordered_chunks")
+        await self._cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ordered_chunks")
         
     async def get_chunk_and_file_and_current_status(self, chunk_id: str, worker_id: str):
         await self._cursor.execute(
-            "SELECT chunk.id, chunk.range_start, chunk.range_end "
-            "file.id, file.path, file.size, file.url, file.chunk_size, file.complete "
+            "SELECT chunk.id, chunk.range_start, chunk.range_end, "
+            "file.id, file.path, file.size, file.url, file.chunk_size, file.complete, "
             "worker_status.worker_id, worker_status.uploaded, worker_status.hash, worker_status.hash_only, worker_status.last_updated "
             "FROM chunk "
             "JOIN file ON file.id=chunk.file_id "
@@ -290,9 +287,9 @@ class StateDBConnection(ContextDecorator):
     # Worker handling
     async def add_worker(self, id: str, discord_id: str, ip: str):
         await self._cursor.execute(
-            "INSERT INTO worker_info (id, discord_id, ip) "
-            "VALUES (%s, %s, %s)",
-            (id, discord_id, ip)
+            "INSERT INTO worker_info (id, discord_id, ip, last_seen) "
+            "VALUES (%s, %s, %s, %s)",
+            (id, discord_id, ip, datetime.now())
         )
 
     async def remove_worker(self, worker_id: str):
@@ -304,7 +301,7 @@ class StateDBConnection(ContextDecorator):
         await self._cursor.execute(
             "SELECT file_id, file_size, file_url, "
             "ordered_chunks.chunk_id, chunk_range_start, chunk_range_end, "
-            "assigned_workers, "
+            "(SELECT COUNT(*) FROM worker_status WHERE worker_status.chunk_id=ordered_chunks.chunk_id) AS assigned_workers, "
             "NOT EXISTS ("
                 "SELECT hash_only "
                 "FROM worker_status "
@@ -312,7 +309,7 @@ class StateDBConnection(ContextDecorator):
                 "AND NOT worker_status.hash_only"
             ") AS hash_only "
             "FROM ordered_chunks "
-            "WHERE assigned_workers < %s "
+            "WHERE (SELECT COUNT(*) FROM worker_status WHERE worker_status.chunk_id=ordered_chunks.chunk_id) < %s " # Initial filter
             "AND file_size < %s "
             "AND NOT EXISTS ( "
                 "SELECT worker_id "
@@ -389,9 +386,11 @@ class StateDBConnection(ContextDecorator):
 
     async def insert_worker_status(self, chunk_id: str, worker_id: str, uploaded: int = 0, hash: str|None = None, hash_only: bool = True):
         await self._cursor.execute(
-            "INSERT OR REPLACE INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only, last_updated) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (chunk_id, worker_id, uploaded, hash, hash_only, datetime.now())
+            "INSERT INTO worker_status (chunk_id, worker_id, uploaded, hash, hash_only, last_updated) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (chunk_id, worker_id) DO UPDATE SET uploaded=%s, hash=%s, hash_only=%s, last_updated=%s",
+            (chunk_id, worker_id, uploaded, hash, hash_only, datetime.now(),
+             uploaded, hash, hash_only, datetime.now())
         )
 
     async def delete_worker_status(self, chunk_id: str, worker_id: str):

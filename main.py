@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from threading import Thread
 import asyncio
 import time
@@ -96,8 +97,10 @@ background_thread = Thread(target=background_coordinator)
 async def lifespan(app: FastAPI):
     await state.initialise()
     background_thread.start()
+    print("Worker initialised!")
     yield
     state.shutting_down = True
+    await state.db.close()
 
 # FastAPI
 app = FastAPI(lifespan=lifespan)
@@ -224,5 +227,9 @@ if __name__ == "__main__":
     central_thread_instance = Thread(target=central_thread)
     central_thread_instance.start()
     uvicorn.run("main:app", host="0.0.0.0", port=state.config["server"]["port"], access_log=False, workers=state.config["server"]["workers"])
+    print("Shutting down main...")
+    state.db.close()
+    time.sleep(1)
+    os._exit(0)
 else:
     print(f"Starting server as {__name__}")

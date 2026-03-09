@@ -3,7 +3,7 @@ from uuid import uuid4
 import requests
 import xxhash
 
-from helpers import get_chunk_instance_temp_path, get_chunk_path, get_url_size
+from helpers import get_chunk_instance_temp_path, get_chunk_path
 import state
 from state_db import DBChunk, DBFile, DBWorkerStatus, StateDBConnection
 from workers import Worker
@@ -97,14 +97,15 @@ async def get_chunks(worker: Worker, data: dict) -> WSMessage:
             chunk_id = downloadable_chunk[3]
             chunk_range_start = downloadable_chunk[4]
             chunk_range_end = downloadable_chunk[5]
-            hash_only = downloadable_chunk[6]
+            assigned_workers = downloadable_chunk[6]
+            hash_only = downloadable_chunk[7]
             
             chunk_size = chunk_range_end - chunk_range_start
             if (chunk_size > free):
                 break
             free -= chunk_size
 
-            connection.insert_worker_status( # @TODO: Batch insert!
+            await connection.insert_worker_status( # @TODO: Batch insert!
                 chunk_id,
                 worker.get_id(),
                 0,
@@ -144,7 +145,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
         chunk: DBChunk
         chunk_file_object: DBFile
         worker_status: DBWorkerStatus
-        chunk, chunk_file_object, worker_status = await connection.get_chunk_and_file_and_current_status(chunk_id)
+        chunk, chunk_file_object, worker_status = await connection.get_chunk_and_file_and_current_status(chunk_id, worker.get_id())
 
     if (chunk == None or chunk_file_object == None or worker_status == None):
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Invalid request"})
@@ -154,7 +155,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
         return WSMessage(WSMessageType.ERROR_RESPONSE, {"error": "Chunk already complete", "chunk_id": chunk_id})
     
     # Get folders
-    chunk_path = get_chunk_instance_temp_path(chunk_file_object.id, chunk.id, worker.get_id())
+    chunk_path = get_chunk_instance_temp_path(chunk_file_object.path, chunk.id, worker.get_id())
 
     # Check if a handle exits for this chunk
     if (not chunk_id in worker.get_file_handles()):
@@ -163,6 +164,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
             os.makedirs(os.path.dirname(chunk_path), exist_ok=True) # Create new handle otherwise
             worker.set_file_handle(chunk_id, open(chunk_path + ".partial", 'wb'))
             worker.set_file_path(chunk_id, chunk_path + ".partial")
+    if (not chunk_id in worker.get_chunk_hashes()):
         worker.set_chunk_hash(chunk_id, xxhash.xxh64())
     
     # If the file should be written to, then we should write to it :p
@@ -187,6 +189,10 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     async with state.db.get_connection() as connection:
         current_status = await connection.get_worker_status(chunk.id, worker.get_id()) # @TODO: This could be optimised
         if (current_status.uploaded != chunk.range_end - chunk.range_start):
+            print(f"F: {chunk_file_object.id} - C: {chunk.id} - W: {worker.get_id()}")
+            print(f"Current uploaded: {current_status.uploaded}")
+            print(f"Expected: {chunk.range_end - chunk.range_start}")
+            print(f"Current tell: {worker.get_file_handle(chunk_id).tell()}")
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received", "chunk_id": chunk_id}) # Chunk not yet finished
 
     # If the chunk instance was the downloaded one, we should close the file handle and rename it
@@ -220,7 +226,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
                     # If this is the downloaded one, we should delete it
                     if (not worker_status.hash_only):
-                        os.remove(get_chunk_instance_temp_path(chunk_file_object.id, worker_status.chunk_id, worker_status.worker_id)) # Remove the chunk this worker downloaded
+                        os.remove(get_chunk_instance_temp_path(chunk_file_object.path, worker_status.chunk_id, worker_status.worker_id)) # Remove the chunk this worker downloaded
 
                     # Mark the chunk as needing more instances by removing the old ones
                     await connection.delete_worker_status(chunk.id, worker_status.worker_id)
@@ -237,15 +243,20 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     # AND we have responses that are complete for every response for this chunk?
     # We can remove the other chunks and just keep ours
     # Only if it hasn't already been done...
-    if (not os.path.exists(get_chunk_path(chunk_file_object.id, chunk_id))):
+    chunk_path = None
+    if (not os.path.exists(get_chunk_path(chunk_file_object.path, chunk.range_start))):
         for worker_status in chunk_workers:
             # Find the worker that actually uploaded the chunk
             if (not worker_status.hash_only):
-                chunk_path = get_chunk_instance_temp_path(chunk_file_object.id, chunk_id, worker_id)
+                chunk_path = get_chunk_instance_temp_path(chunk_file_object.path, chunk_id, worker_status.worker_id)
                 break
 
         # Move that chunk to the proper path
-        os.replace(chunk_path, get_chunk_path(chunk_file_object.id, chunk_id))
+        if (chunk_path == None):
+            print("OKAY THAT'S NOT GOOD - CHUNK PATH WAS NONE???")
+            return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id}) # If any of the workers aren't complete we just skip this
+        
+        os.replace(chunk_path, get_chunk_path(chunk_file_object.path, chunk.range_start))
 
 
     # Check if all the other chunks are also completed
@@ -275,8 +286,8 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
     # If we are done though, then we should construct and move the entire file
     chunk_files = []
-    for file_chunk in sorted(file_object_chunks, key=lambda file_chunk: file_chunk.range_start):
-        chunk_files.append(get_chunk_path(chunk_file_object.id, file_chunk.id))
+    for file_chunk in file_object_chunks: # No need to sort because the SQL DB does that for us
+        chunk_files.append(get_chunk_path(chunk_file_object.path, file_chunk.range_start))
 
     # Now we construct the final file!
     md5_hash = hashlib.md5()

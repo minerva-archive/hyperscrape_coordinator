@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS worker_status
     uploaded        BIGINT     NOT NULL,
     hash            TEXT,                   -- Can be null
     hash_only       BOOLEAN     NOT NULL,
+    last_updated    TIMESTAMP   NOT NULL DEFAULT NOW(),
     PRIMARY KEY (chunk_id, worker_id)
 );
 
@@ -38,7 +39,8 @@ CREATE TABLE IF NOT EXISTS worker_info
 (
     id          TEXT PRIMARY KEY NOT NULL,
     discord_id  TEXT NOT NULL,
-    ip          TEXT NOT NULL
+    ip          TEXT NOT NULL,
+    last_seen   TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS file_hash
@@ -59,16 +61,18 @@ CREATE TABLE IF NOT EXISTS leaderboard
 );
 
 -- Create a materialized view that is an ordered list of chunks
-CREATE MATERIALIZED VIEW IF NOT EXISTS ordered_chunks AS -- Create the view...
-SELECT file.id AS file_id, file.size AS file_size, file.url AS file_url, -- Get file info
-chunk.id AS chunk_id, chunk.range_start AS chunk_range_start, chunk.range_end AS chunk_range_end, -- Get chunk info
-COUNT(worker_status.worker_id) AS assigned_workers -- Get number of workers assigned per chunk
-FROM file -- From file...
-JOIN chunk ON chunk.file_id=file.id -- Join the chunks
-LEFT JOIN worker_status ON worker_status.chunk_id=chunk.id -- Join the workers
-WHERE (NOT file.complete) -- Don't include completed files
-AND (file.size IS NOT NULL AND file.size != 0) -- Only files with valid sizes
-GROUP BY file.id, chunk.id -- We want individual chunk instances
-ORDER BY COUNT(worker_status.worker_id) DESC; -- Order it!
+CREATE MATERIALIZED VIEW IF NOT EXISTS ordered_chunks AS
+SELECT file.id AS file_id, file.size AS file_size, file.url AS file_url,
+chunk.id AS chunk_id, chunk.range_start AS chunk_range_start, chunk.range_end AS chunk_range_end,
+COUNT(worker_status.worker_id) AS assigned_workers
+FROM file
+JOIN chunk ON chunk.file_id=file.id
+LEFT JOIN worker_status ON worker_status.chunk_id=chunk.id
+WHERE (NOT file.complete)
+AND (file.size IS NOT NULL AND file.size != 0)
+GROUP BY file.id, chunk.id
+ORDER BY COUNT(worker_status.worker_id) DESC;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ordered_chunk_index ON ordered_chunks(file_id, chunk_id);
 
 COMMIT;
