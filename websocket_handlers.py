@@ -189,6 +189,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     async with state.db.get_connection() as connection:
         current_status = await connection.get_worker_status(chunk.id, worker.get_id()) # @TODO: This could be optimised
         if (current_status.uploaded != chunk.range_end - chunk.range_start):
+            print(f"P: {worker.get_file_path(chunk_id)}")
             print(f"F: {chunk_file_object.id} - C: {chunk.id} - W: {worker.get_id()}")
             print(f"Current uploaded: {current_status.uploaded}")
             print(f"Expected: {chunk.range_end - chunk.range_start}")

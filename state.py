@@ -152,6 +152,6 @@ async def main_initailise():
             await connection._cursor.execute(file.read())
         print("Truncating worker_info...")
         await connection._cursor.execute("TRUNCATE worker_info")
-        print("Cleaning worker_status...")
+        print("Cleaning worker_status...") # @TODO: ALSO CLEAN THE FILES
         await connection._cursor.execute("DELETE FROM worker_status WHERE hash IS NULL")
     print("Main initialisation complete!")

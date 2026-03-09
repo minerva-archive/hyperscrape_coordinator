@@ -7,12 +7,13 @@ CREATE TABLE IF NOT EXISTS stat
 
 CREATE TABLE IF NOT EXISTS file
 (
-    id         TEXT     PRIMARY KEY NOT NULL,
-    path       TEXT     NOT NULL,
-    size       BIGINT, -- Nullable at first
-    url        TEXT     NOT NULL,
-    chunk_size BIGINT  NOT NULL,
-    complete   BOOLEAN  NOT NULL DEFAULT FALSE
+    id              TEXT     PRIMARY KEY NOT NULL,
+    path            TEXT     NOT NULL,
+    size            BIGINT, -- Nullable at first
+    url             TEXT     NOT NULL,
+    chunk_size      BIGINT  NOT NULL,
+    complete        BOOLEAN  NOT NULL DEFAULT FALSE,
+    expected_md5    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS chunk
@@ -40,12 +41,19 @@ CREATE TABLE IF NOT EXISTS worker_info
     id          TEXT PRIMARY KEY NOT NULL,
     discord_id  TEXT NOT NULL,
     ip          TEXT NOT NULL,
-    last_seen   TEXT NOT NULL
+    last_seen   TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS detached_chunks
+(
+    worker_id   TEXT NOT NULL REFERENCES worker_info(id),
+    chunk_id    TEXT NOT NULL REFERENCES chunk(id),
+    PRIMARY KEY (worker_id, chunk_id)
+)
 
 CREATE TABLE IF NOT EXISTS file_hash
 (
-    file_id         TEXT NOT NULL UNIQUE REFERENCES file(id),
+    file_id         TEXT NOT NULL PRIMARY KEY REFERENCES file(id),
     md5             TEXT NOT NULL,
     sha1            TEXT NOT NULL,
     sha256          TEXT NOT NULL

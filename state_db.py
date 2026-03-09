@@ -414,7 +414,7 @@ class StateDBConnection(ContextDecorator):
 
     async def set_worker_status_uploaded(self, chunk_id: str, worker_id: str, uploaded: int):
         await self._cursor.execute(
-            "UPDATE worker_status SET uploaded = uploaded + %s WHERE chunk_id = %s AND worker_id = %s",
+            "UPDATE worker_status SET uploaded = %s WHERE chunk_id = %s AND worker_id = %s",
             (uploaded, chunk_id, worker_id)
         )
 
