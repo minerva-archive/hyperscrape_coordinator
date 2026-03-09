@@ -83,7 +83,6 @@ async def get_chunks(worker: Worker, data: dict) -> WSMessage:
         response = {}
         chunks = await connection.get_ordered_downloadable_files(
             num_chunks_to_get,
-            0,
             state.config["general"]["trust_count"],
             worker.get_id(),
             worker.get_ip(),
@@ -189,11 +188,6 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
     async with state.db.get_connection() as connection:
         current_status = await connection.get_worker_status(chunk.id, worker.get_id()) # @TODO: This could be optimised
         if (current_status.uploaded != chunk.range_end - chunk.range_start):
-            print(f"P: {worker.get_file_path(chunk_id)}")
-            print(f"F: {chunk_file_object.id} - C: {chunk.id} - W: {worker.get_id()}")
-            print(f"Current uploaded: {current_status.uploaded}")
-            print(f"Expected: {chunk.range_end - chunk.range_start}")
-            print(f"Current tell: {worker.get_file_handle(chunk_id).tell()}")
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Segment Received", "chunk_id": chunk_id}) # Chunk not yet finished
 
     # If the chunk instance was the downloaded one, we should close the file handle and rename it
@@ -231,13 +225,17 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
 
                     # Mark the chunk as needing more instances by removing the old ones
                     await connection.delete_worker_status(chunk.id, worker_status.worker_id)
+                print("WARNING: MISMATCH DETECTED!")
+                print(f"C: {chunk.id}")
                 return WSMessage(WSMessageType.OK_RESPONSE, {"result": "Upload had a mismatched hash, you can ignore this", "chunk_id": chunk_id}) # We've processed the upload from the client, don't come back regardless of what happened
     
     # If the hashes weren't mismatched...
     if (len(chunk_workers) < state.config["general"]["trust_count"]): # Check that we have all the chunks responses we need
+        print("Still missing trust count!")
         return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id})
     for worker_status in chunk_workers: # Check that they're all complete
         if (not worker_status.hash):
+            print(f"Chunk: {chunk.id} is incomplete, missing {worker_status.worker_id}")
             return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "Upload looks good so far", "chunk_id": chunk_id}) # If any of the workers aren't complete we just skip this
     
     # So all the hashes are good
@@ -271,6 +269,7 @@ async def upload_chunk(worker: Worker, data: dict) -> WSMessage:
             chunk_workers = await connection.get_chunk_worker_status(chunk.id)
 
             if (len(chunk_workers) == 0 or len(chunk_workers) < state.config["general"]["trust_count"]):
+                print(f"File {chunk_file_object.id} is incomplete, chunk: {chunk.id} is incomplete!")
                 # Chunk hasn't been downloaded yet
                 file_complete = False
                 break
@@ -363,4 +362,5 @@ async def detach_chunk(worker: Worker, data: dict) -> WSMessage:
     # This lets the coordinator know that a "slot" has openned up for another worker to take its place
     async with state.db.get_connection() as connection:
         await connection.delete_worker_status(chunk_id, worker.get_id())
+        await connection.insert_detached_chunk(worker.get_id(), chunk_id)
     return WSMessage(WSMessageType.OK_RESPONSE, {"ok": "detached", "chunk_id": chunk_id})

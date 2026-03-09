@@ -158,7 +158,7 @@ async def get_leaderboard(limit: int = 25, offset: int = 0) -> list[dict]:
     response = []
     connection: StateDBConnection
     async with state.db.get_connection() as connection:
-        for leaderboard_item in await connection.get_leaderboard():
+        for leaderboard_item in await connection.get_leaderboard(limit, offset):
             response.append({
                 "discord_username": leaderboard_item.discord_username,
                 "avatar_url": leaderboard_item.avatar_url,

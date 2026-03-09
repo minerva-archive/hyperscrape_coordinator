@@ -43,12 +43,12 @@ CREATE TABLE IF NOT EXISTS worker_info
     last_seen   TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS detached_chunks
+CREATE TABLE IF NOT EXISTS detached_chunk
 (
-    worker_id   TEXT NOT NULL REFERENCES worker_info(id),
+    worker_id   TEXT NOT NULL REFERENCES worker_info(id) ON DELETE CASCADE,
     chunk_id    TEXT NOT NULL REFERENCES chunk(id),
     PRIMARY KEY (worker_id, chunk_id)
-)
+);
 
 CREATE TABLE IF NOT EXISTS file_hash
 (
@@ -78,7 +78,7 @@ LEFT JOIN worker_status ON worker_status.chunk_id=chunk.id
 WHERE (NOT file.complete)
 AND (file.size IS NOT NULL AND file.size != 0)
 GROUP BY file.id, chunk.id
-ORDER BY COUNT(worker_status.worker_id) DESC;
+ORDER BY COUNT(worker_status.worker_id) DESC, file.size ASC, file.id; -- To prioritise downloading full small files quicker
 
 CREATE UNIQUE INDEX IF NOT EXISTS ordered_chunk_index ON ordered_chunks(file_id, chunk_id);
 

@@ -212,10 +212,14 @@ class StateDBConnection(ContextDecorator):
             record[5]
         )
 
-    async def get_leaderboard(self) -> list[DBLeaderboardItem]:
+    async def get_leaderboard(self, limit: int, offset: int) -> list[DBLeaderboardItem]:
         records: list[DBLeaderboardItem] = []
         async for record in self._cursor.stream(
-            "SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes FROM leaderboard ORDER BY downloaded_bytes DESC"
+            "SELECT discord_id, discord_username, avatar_url, downloaded_chunks, downloaded_bytes "
+            "FROM leaderboard "
+            "ORDER BY downloaded_bytes DESC "
+            "LIMIT %s OFFSET %s",
+            (limit, offset)
         ):
             records.append(DBLeaderboardItem(
                 record[0],
@@ -297,7 +301,7 @@ class StateDBConnection(ContextDecorator):
         await self._cursor.execute("DELETE FROM worker_status WHERE hash IS NULL AND worker_id = %s", (worker_id, ))
         
     # Ordered getter
-    async def get_ordered_downloadable_files(self, limit: int, offset: int, worker_limit: int, current_worker_id: str, current_worker_ip: str, free_space: int):
+    async def get_ordered_downloadable_files(self, limit: int, worker_limit: int, current_worker_id: str, current_worker_ip: str, free_space: int):
         await self._cursor.execute(
             "SELECT file_id, file_size, file_url, "
             "ordered_chunks.chunk_id, chunk_range_start, chunk_range_end, "
@@ -318,13 +322,19 @@ class StateDBConnection(ContextDecorator):
                 "WHERE worker_status.chunk_id=ordered_chunks.chunk_id "
                 "AND "
                 "("
-                    "worker_info.id=%s "
+                    "worker_info.id = %s "
                     "OR "
-                    "worker_info.ip=%s"
+                    "worker_info.ip = %s"
                 ")"
-            ")"
+            ") "
+            "AND NOT EXISTS ( "
+                "SELECT * "
+                "FROM detached_chunk "
+                "WHERE detached_chunk.worker_id = %s "
+                "AND detached_chunk.chunk_id = ordered_chunks.chunk_id"
+            ") "
             "LIMIT %s;",
-            (worker_limit, free_space, current_worker_id, current_worker_ip, limit)
+            (worker_limit, free_space, current_worker_id, current_worker_ip, current_worker_id, limit)
         )
         return await self._cursor.fetchall()
         
@@ -367,6 +377,14 @@ class StateDBConnection(ContextDecorator):
         await self._cursor.execute(
             "UPDATE file SET complete = TRUE WHERE id = %s",
             (file_id,)
+        )
+
+    # Detached chunk mutations
+    async def insert_detached_chunk(self, worker_id: str, chunk_id: str):
+        await self._cursor.execute(
+            "INSERT INTO detached_chunk (worker_id, chunk_id) "
+            "VALUES (%s, %s)",
+            (worker_id, chunk_id)
         )
 
 
